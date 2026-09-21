@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Чат с агентом и автоматической трёхслойной памятью" />
+    <title>AI Challenge W3</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/styles.css?v=invariants-1" />
+  </head>
+  <body>
+    <main class="chat-shell">
+      <aside class="sidebar">
+        <a class="brand" href="/"><span>◇</span> AI Challenge W3</a>
+        <section class="profile-switcher" aria-labelledby="profile-switcher-label">
+          <label id="profile-switcher-label" for="profile-select">Профиль</label>
+          <div>
+            <select id="profile-select" aria-label="Активный профиль"></select>
+            <button id="edit-profile" class="icon-button" type="button" title="Проверить или скорректировать профиль" aria-label="Проверить или скорректировать профиль">⚙</button>
+          </div>
+          <button id="new-profile" class="secondary" type="button">＋ Новый пользователь</button>
+        </section>
+        <button id="new-session" class="primary" type="button">＋ Новый чат</button>
+        <button id="open-invariants" class="secondary invariants-menu" type="button">Инварианты <span id="invariant-count">…</span></button>
+        <nav id="sessions" aria-label="Сессии чата"></nav>
+        <button id="clear-database" class="danger" type="button">Очистить чаты профиля</button>
+
+        <p class="memory-note">Контекст собирается из трёх слоёв. Важные факты агент сохраняет автоматически.</p>
+      </aside>
+
+      <section class="conversation" aria-labelledby="chat-title">
+        <header>
+          <div>
+            <p class="eyebrow">CODE-ISOLATED AGENT CHAT</p>
+            <h1 id="chat-title">Новый чат</h1>
+            <div id="active-invariants" class="active-invariants" aria-label="Активные инварианты"></div>
+          </div>
+          <div class="header-actions">
+            <button id="refresh-session" class="secondary" type="button">Обновить</button>
+            <span id="status" role="status">Подключение…</span>
+          </div>
+        </header>
+
+        <section id="task-overview" class="task-overview" aria-label="Прогресс задачи" hidden>
+          <div id="task-stages" class="task-stages" aria-label="Этапы задачи"></div>
+          <div class="task-overview-summary">
+            <p id="task-current"></p>
+            <span id="task-progress"></span>
+            <button id="show-task-process" class="secondary" type="button">План ↗</button>
+          </div>
+        </section>
+
+        <div id="messages" class="messages" aria-live="polite">
+          <div class="empty">
+            <span>✦</span>
+            <h2>Чем помочь?</h2>
+            <p>Напишите первую задачу. Перед работой агент коротко познакомится с вами.</p>
+          </div>
+        </div>
+
+        <section id="followup-queue" class="followup-queue" aria-label="Очередь сообщений" aria-live="polite" hidden>
+          <header>
+            <strong>Далее</strong>
+            <span id="queue-count">0</span>
+          </header>
+          <div id="queued-messages"></div>
+        </section>
+
+        <form id="message-form">
+          <textarea
+            id="message-input"
+            rows="2"
+            maxlength="12000"
+            placeholder="Сообщение или /команда…"
+            aria-label="Сообщение агенту"
+            aria-controls="command-menu"
+            aria-autocomplete="list"
+            required
+          ></textarea>
+          <div id="command-menu" class="command-menu" role="listbox" aria-label="Команды памяти" hidden></div>
+          <div class="composer-actions">
+            <button class="primary" type="submit">Отправить</button>
+            <button id="start-task" class="secondary" type="button">Создать задачу</button>
+          </div>
+        </form>
+        <section id="task-toolbar" class="task-toolbar" aria-label="Действия задачи" hidden>
+          <div class="task-actions">
+            <button id="task-advance" class="primary" type="button"></button>
+            <button id="task-pause" class="secondary" type="button">Пауза</button>
+            <button id="task-resume" class="primary" type="button">Продолжить</button>
+            <button id="task-replan" class="secondary" type="button">Пересмотреть план</button>
+          </div>
+          <p id="task-note" class="task-hint" role="status"></p>
+        </section>
+      </section>
+
+      <aside class="context-panel" aria-label="Процесс задачи и память">
+        <div id="inspector-tabs" class="inspector-tabs" role="tablist" aria-label="Правая панель" hidden>
+          <button id="process-tab" role="tab" aria-selected="true" aria-controls="task-panel" type="button">Процесс</button>
+          <button id="memory-tab" role="tab" aria-selected="false" aria-controls="memory-view" tabindex="-1" type="button">Память</button>
+        </div>
+        <section id="task-panel" class="task-panel" role="tabpanel" aria-labelledby="process-tab" hidden>
+          <div class="task-heading">
+            <p class="eyebrow">ЗАДАЧА</p>
+            <h2 id="task-title"></h2>
+          </div>
+          <div id="task-activity" class="task-activity" role="status" aria-live="polite">
+            <span class="activity-icon" aria-hidden="true"></span>
+            <div>
+              <strong id="task-activity-title"></strong>
+              <p id="task-expected"></p>
+            </div>
+            <span id="task-elapsed" aria-label="Время ожидания" aria-live="off" hidden></span>
+          </div>
+          <section id="task-plan-details" aria-labelledby="task-plan-title" hidden>
+            <h3 id="task-plan-title">Шаги плана</h3>
+            <ol id="task-plan" class="task-timeline"></ol>
+            <details>
+              <summary>Критерии готовности</summary>
+              <ul id="task-criteria"></ul>
+            </details>
+          </section>
+          <p id="task-plan-empty" class="task-hint">После планирования здесь появятся шаги задачи.</p>
+          <details id="task-results-details">
+            <summary id="task-results-summary">Сохранённые результаты</summary>
+            <div id="task-results"></div>
+          </details>
+        </section>
+        <section id="memory-view" class="memory-panel" role="tabpanel" aria-labelledby="memory-tab">
+          <header>
+            <div>
+              <p class="eyebrow">MEMORY INSPECTOR</p>
+              <h2 id="memory-title">Память агента</h2>
+            </div>
+            <span class="explicit-badge">auto</span>
+          </header>
+
+          <div class="memory-layers">
+            <section class="active-profile-card" aria-labelledby="active-profile-name">
+              <div>
+                <span id="active-profile-status">INTERVIEW</span>
+                <strong id="active-profile-name">Основной</strong>
+              </div>
+              <p id="active-profile-summary">Нейтральный · обычная подробность</p>
+              <div id="active-profile-constraints" class="profile-constraints"></div>
+            </section>
+
+            <section class="memory-layer short-term">
+              <div class="layer-heading">
+                <div><span class="layer-dot"></span><strong>Краткосрочная</strong></div>
+                <span id="short-term-count" class="layer-count">0</span>
+              </div>
+              <p class="layer-description">Последние сообщения только этого чата.</p>
+              <div id="short-term-memory" class="memory-items"></div>
+            </section>
+
+            <section class="memory-layer working">
+              <div class="layer-heading">
+                <div><span class="layer-dot"></span><strong>Рабочая</strong></div>
+                <span id="working-count" class="layer-count">0</span>
+              </div>
+              <p class="layer-description">Цель, ограничения и решения текущей задачи.</p>
+              <div id="working-memory" class="memory-items"></div>
+            </section>
+
+            <section class="memory-layer long-term">
+              <div class="layer-heading">
+                <div><span class="layer-dot"></span><strong>Долговременная</strong></div>
+                <span id="long-term-count" class="layer-count">0</span>
+              </div>
+              <p class="layer-description">Факты и предпочтения во всех чатах этого пользователя.</p>
+              <div id="long-term-memory" class="memory-items"></div>
+            </section>
+          </div>
+
+          <section class="command-help">
+            <strong>Slash-команды</strong>
+            <p>Профиль строится из короткого интервью. Дальше агент сохраняет важное сам; <kbd>/</kbd> остаётся для ручного контроля памяти.</p>
+          </section>
+        </section>
+      </aside>
+    </main>
+
+    <dialog id="invariants-dialog" aria-labelledby="invariants-title">
+      <form id="invariants-form">
+        <header>
+          <div><p class="eyebrow">ПРАВИЛА ОТВЕТОВ</p><h2 id="invariants-title">Инварианты</h2></div>
+          <button id="close-invariants" class="icon-button" type="button" aria-label="Закрыть инварианты">×</button>
+        </header>
+        <p class="invariant-intro">Общие правила для всех профилей. Просьба в диалоге не может их отменить.</p>
+        <fieldset id="invariants-fields">
+          <section class="invariant-card emoji-rule">
+            <div class="invariant-card-heading">
+              <span class="invariant-symbol" aria-hidden="true">🙂</span>
+              <label for="emoji-enabled">Без эмодзи нельзя</label>
+              <input id="emoji-enabled" type="checkbox" role="switch" />
+            </div>
+            <p>Каждый ответ, включая отказ, содержит эмодзи.</p>
+            <label class="invariant-number" for="min-emojis">Минимум эмодзи <input id="min-emojis" type="number" min="1" max="10" required value="3" /></label>
+          </section>
+          <section class="invariant-card uppercase-rule">
+            <div class="invariant-card-heading">
+              <span class="invariant-symbol" aria-hidden="true">Аа</span>
+              <label for="uppercase-enabled">Только ВЕРХНИЙ РЕГИСТР</label>
+              <input id="uppercase-enabled" type="checkbox" role="switch" />
+            </div>
+            <p>Весь текст ответа — заглавными буквами.</p>
+          </section>
+          <section class="invariant-card sentence-rule">
+            <div class="invariant-card-heading">
+              <span class="invariant-symbol" aria-hidden="true">…</span>
+              <label for="sentence-limit-enabled">Коротко и по делу</label>
+              <input id="sentence-limit-enabled" type="checkbox" role="switch" />
+            </div>
+            <p>Ответ не превышает лимит предложений; длинный ответ не обрезается молча.</p>
+            <label class="invariant-number" for="max-sentences">Максимум предложений <input id="max-sentences" type="number" min="1" max="10" required value="3" /></label>
+          </section>
+        </fieldset>
+        <section class="invariant-preview" aria-label="Пример формата ответа"><span>ПРИМЕР ФОРМАТА</span><p id="invariant-preview-text"></p></section>
+        <p class="invariant-footnote">После сохранения правила применяются к новым запросам. Уже начатый ответ использует прежние настройки.</p>
+        <p id="invariant-error" role="alert" hidden></p>
+        <footer><button id="cancel-invariants" class="secondary" type="button">Отмена</button><button id="save-invariants" class="primary" type="submit">Сохранить</button></footer>
+      </form>
+    </dialog>
+
+    <dialog id="profile-dialog">
+      <form id="profile-form">
+        <header>
+          <div>
+            <p class="eyebrow">PERSONALIZATION</p>
+            <h2 id="profile-dialog-title">Проверка профиля</h2>
+          </div>
+          <button id="close-profile-dialog" class="icon-button" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <input id="profile-id" type="hidden" />
+        <label>
+          Имя профиля
+          <input id="profile-name" maxlength="80" required />
+        </label>
+        <label>
+          Описание пользователя
+          <textarea id="profile-description" rows="2" maxlength="1000" placeholder="Роль, контекст, уровень опыта"></textarea>
+        </label>
+        <div class="profile-form-grid">
+          <label>
+            Язык
+            <select id="profile-language">
+              <option value="ru">Русский</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <label>
+            Тон
+            <select id="profile-tone">
+              <option value="neutral">Нейтральный</option>
+              <option value="friendly">Дружелюбный</option>
+              <option value="formal">Формальный</option>
+              <option value="technical">Технический</option>
+            </select>
+          </label>
+          <label>
+            Подробность
+            <select id="profile-detail-level">
+              <option value="brief">Кратко</option>
+              <option value="balanced" selected>Сбалансированно</option>
+              <option value="detailed">Подробно</option>
+            </select>
+          </label>
+          <label>
+            Формат
+            <select id="profile-response-format">
+              <option value="plain">Обычный текст</option>
+              <option value="bullets">Списки</option>
+              <option value="steps">Пошагово</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Ограничения, по одному на строку
+          <textarea id="profile-constraints-input" rows="3" maxlength="2000" placeholder="Без эмодзи&#10;Сначала краткий вывод"></textarea>
+        </label>
+        <footer>
+          <button id="delete-profile" class="danger" type="button">Удалить профиль</button>
+          <button id="cancel-profile" class="secondary" type="button">Отмена</button>
+          <button class="primary" type="submit">Сохранить профиль</button>
+        </footer>
+      </form>
+    </dialog>
+    <script src="/app.js?v=task-lifecycle-1" defer></script>
+  </body>
+</html>
