@@ -56,6 +56,14 @@ const inspectorTabs = document.querySelector("#inspector-tabs");
 const processTab = document.querySelector("#process-tab");
 const memoryTab = document.querySelector("#memory-tab");
 const showProcessButton = document.querySelector("#show-task-process");
+const contextPanel = document.querySelector("#context-panel");
+const contextBackdrop = document.querySelector("#context-backdrop");
+const openMemoryButton = document.querySelector("#open-memory-panel");
+const closeContextButton = document.querySelector("#close-context-panel");
+const openNavigationButton = document.querySelector("#open-navigation");
+const closeNavigationButton = document.querySelector("#close-navigation");
+const navigationBackdrop = document.querySelector("#navigation-backdrop");
+const sidebar = document.querySelector(".sidebar");
 const advanceButton = document.querySelector("#task-advance");
 const pauseButton = document.querySelector("#task-pause");
 const resumeButton = document.querySelector("#task-resume");
@@ -300,6 +308,35 @@ function setInspector(mode) {
     tab.setAttribute("aria-selected", String(inspectorMode === name));
     tab.tabIndex = inspectorMode === name ? 0 : -1;
   }
+}
+
+function openInspector(mode) {
+  setInspector(mode);
+  contextPanel.classList.add("open");
+  contextPanel.setAttribute("aria-hidden", "false");
+  contextBackdrop.hidden = false;
+  document.body.classList.add("inspector-open");
+  closeContextButton.focus({ preventScroll: true });
+}
+
+function closeInspector() {
+  contextPanel.classList.remove("open");
+  contextPanel.setAttribute("aria-hidden", "true");
+  contextBackdrop.hidden = true;
+  document.body.classList.remove("inspector-open");
+}
+
+function openNavigation() {
+  sidebar.classList.add("open");
+  navigationBackdrop.hidden = false;
+  document.body.classList.add("navigation-open");
+  closeNavigationButton.focus({ preventScroll: true });
+}
+
+function closeNavigation() {
+  sidebar.classList.remove("open");
+  navigationBackdrop.hidden = true;
+  document.body.classList.remove("navigation-open");
 }
 
 function taskIcon(name) {
@@ -753,7 +790,10 @@ function renderSessions() {
     button.type = "button";
     button.className = session.id === currentSessionId ? "session active" : "session";
     button.textContent = `${session.title}${session.task ? ` · ${session.task.paused ? "⏸" : STAGES[session.task.state]}` : ""}`;
-    button.addEventListener("click", () => openSession(session.id));
+    button.addEventListener("click", async () => {
+      await openSession(session.id);
+      if (sidebar.classList.contains("open")) closeNavigation();
+    });
     return button;
   }));
 }
@@ -1238,11 +1278,17 @@ inspectorTabs.addEventListener("keydown", (event) => {
   (mode === "process" ? processTab : memoryTab).focus();
 });
 showProcessButton.addEventListener("click", () => {
-  setInspector("process");
-  processTab.focus({ preventScroll: true });
-  if (window.matchMedia("(max-width: 820px)").matches) {
-    taskPanel.closest(".context-panel").scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
-  }
+  openInspector("process");
+});
+openMemoryButton.addEventListener("click", () => openInspector("memory"));
+closeContextButton.addEventListener("click", closeInspector);
+contextBackdrop.addEventListener("click", closeInspector);
+openNavigationButton.addEventListener("click", openNavigation);
+closeNavigationButton.addEventListener("click", closeNavigation);
+navigationBackdrop.addEventListener("click", closeNavigation);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && contextPanel.classList.contains("open")) closeInspector();
+  if (event.key === "Escape" && sidebar.classList.contains("open")) closeNavigation();
 });
 
 

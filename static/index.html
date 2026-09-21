@@ -6,38 +6,41 @@
     <meta name="description" content="Чат с агентом и автоматической трёхслойной памятью" />
     <title>AI Challenge W3</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/styles.css?v=invariants-1" />
+    <link rel="stylesheet" href="/styles.css?v=minimal-shell-1" />
   </head>
   <body>
     <main class="chat-shell">
       <aside class="sidebar">
-        <a class="brand" href="/"><span>◇</span> AI Challenge W3</a>
+        <div class="sidebar-heading">
+          <a class="brand" href="/"><span>◇</span><span>AI Challenge W3</span></a>
+          <button id="close-navigation" class="icon-button mobile-only" type="button" aria-label="Закрыть список чатов">×</button>
+        </div>
         <section class="profile-switcher" aria-labelledby="profile-switcher-label">
           <label id="profile-switcher-label" for="profile-select">Профиль</label>
           <div>
             <select id="profile-select" aria-label="Активный профиль"></select>
             <button id="edit-profile" class="icon-button" type="button" title="Проверить или скорректировать профиль" aria-label="Проверить или скорректировать профиль">⚙</button>
           </div>
-          <button id="new-profile" class="secondary" type="button">＋ Новый пользователь</button>
+          <button id="new-profile" class="quiet-button" type="button">＋ Добавить профиль</button>
         </section>
         <button id="new-session" class="primary" type="button">＋ Новый чат</button>
-        <button id="open-invariants" class="secondary invariants-menu" type="button">Инварианты <span id="invariant-count">…</span></button>
+        <button id="open-invariants" class="quiet-button invariants-menu" type="button">Правила ответа <span id="invariant-count">…</span></button>
         <nav id="sessions" aria-label="Сессии чата"></nav>
         <button id="clear-database" class="danger" type="button">Очистить чаты профиля</button>
 
-        <p class="memory-note">Контекст собирается из трёх слоёв. Важные факты агент сохраняет автоматически.</p>
       </aside>
 
       <section class="conversation" aria-labelledby="chat-title">
         <header>
+          <button id="open-navigation" class="icon-button mobile-only" type="button" aria-label="Открыть список чатов">☰</button>
           <div>
-            <p class="eyebrow">CODE-ISOLATED AGENT CHAT</p>
             <h1 id="chat-title">Новый чат</h1>
             <div id="active-invariants" class="active-invariants" aria-label="Активные инварианты"></div>
           </div>
           <div class="header-actions">
-            <button id="refresh-session" class="secondary" type="button">Обновить</button>
             <span id="status" role="status">Подключение…</span>
+            <button id="open-memory-panel" class="secondary" type="button">Память</button>
+            <button id="refresh-session" class="icon-button" type="button" title="Обновить чат" aria-label="Обновить чат">↻</button>
           </div>
         </header>
 
@@ -46,7 +49,7 @@
           <div class="task-overview-summary">
             <p id="task-current"></p>
             <span id="task-progress"></span>
-            <button id="show-task-process" class="secondary" type="button">План ↗</button>
+            <button id="show-task-process" class="quiet-button" type="button">Открыть план</button>
           </div>
         </section>
 
@@ -94,7 +97,13 @@
         </section>
       </section>
 
-      <aside class="context-panel" aria-label="Процесс задачи и память">
+      <div id="navigation-backdrop" class="context-backdrop navigation-backdrop" hidden></div>
+      <div id="context-backdrop" class="context-backdrop" hidden></div>
+      <aside id="context-panel" class="context-panel" aria-label="Процесс задачи и память" aria-hidden="true">
+        <header class="context-panel-header">
+          <strong>Контекст</strong>
+          <button id="close-context-panel" class="icon-button" type="button" aria-label="Закрыть панель">×</button>
+        </header>
         <div id="inspector-tabs" class="inspector-tabs" role="tablist" aria-label="Правая панель" hidden>
           <button id="process-tab" role="tab" aria-selected="true" aria-controls="task-panel" type="button">Процесс</button>
           <button id="memory-tab" role="tab" aria-selected="false" aria-controls="memory-view" tabindex="-1" type="button">Память</button>
@@ -286,6 +295,6 @@
         </footer>
       </form>
     </dialog>
-    <script src="/app.js?v=task-lifecycle-1" defer></script>
+    <script src="/app.js?v=minimal-shell-1" defer></script>
   </body>
 </html>
