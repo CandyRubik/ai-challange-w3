@@ -49,6 +49,9 @@ def test_frontend_keeps_composer_visible_and_sends_with_enter() -> None:
     assert "!event.shiftKey" in javascript
     assert "form.requestSubmit()" in javascript
     assert "memoryCommands" in javascript
+    assert "mcpCommands" in javascript
+    assert 'name: "/mcp-tools", kind: "mcp"' in javascript
+    assert 'name: "/deepwiki", kind: "mcp"' in javascript
     assert 'name: "/goal", layer: "working"' in javascript
     assert 'name: "/profile", layer: "long_term"' in javascript
     assert "parsedMemoryCommand(content)" in javascript

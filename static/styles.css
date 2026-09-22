@@ -94,6 +94,7 @@ textarea { resize: none; border: 1px solid #353b5c; border-radius: 14px; padding
 .command-option small { border-radius: 999px; padding: 3px 6px; font: 700 9px ui-monospace, monospace; }
 .command-option small.working { color: #c6a8ff; background: #3b2856; }
 .command-option small.long_term { color: #ffc86e; background: #50391d; }
+.command-option small.mcp { color: #91e9d0; background: #173f3b; }
 
 .memory-panel {
   display: grid;

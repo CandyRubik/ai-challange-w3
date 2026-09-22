@@ -31,6 +31,8 @@ from .schemas import (
     MemoryCreateRequest,
     MemoryEntry,
     MemorySnapshot,
+    McpStatus,
+    McpToolView,
     UserProfile,
     UserProfileCreateRequest,
     UserProfileUpdateRequest,
@@ -39,6 +41,7 @@ from .schemas import (
 from .services.chat_sessions import (
     ChatSessionService,
 )
+from .services.mcp import McpError, McpService
 from .storage.chat_sessions import (
     ChatSessionNotFound,
     DEFAULT_CHAT_DB_PATH,
@@ -108,7 +111,14 @@ def get_chat_session_service() -> ChatSessionService:
         get_profile_repository(),
         ProfileInterviewer(provider),
         invariant_repository=get_invariant_repository(),
+        mcp_service=get_mcp_service(),
+        mcp_model=provider,
     )
+
+
+@lru_cache(maxsize=1)
+def get_mcp_service() -> McpService:
+    return McpService()
 
 
 @lru_cache(maxsize=1)
@@ -152,7 +162,38 @@ def health() -> dict[str, bool | str]:
     return {
         "status": "ok",
         "deepseek_configured": bool(os.getenv("DEEPSEEK_API_KEY")),
+        "mcp_endpoint": get_mcp_service().server_url,
     }
+
+
+@app.get("/api/mcp/status", response_model=McpStatus)
+def mcp_status(service: McpService = Depends(get_mcp_service)) -> McpStatus:
+    try:
+        tools = service.list_tools()
+    except McpError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from None
+    return McpStatus(
+        connected=True,
+        endpoint=service.server_url,
+        tool_count=len(tools),
+    )
+
+
+@app.get("/api/mcp/tools", response_model=list[McpToolView])
+def list_mcp_tools(
+    service: McpService = Depends(get_mcp_service),
+) -> list[McpToolView]:
+    try:
+        return [
+            McpToolView(
+                name=tool.name,
+                description=tool.description,
+                input_schema=tool.input_schema,
+            )
+            for tool in service.list_tools()
+        ]
+    except McpError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from None
 
 
 @app.post("/api/chat/sessions", response_model=ChatSession, status_code=201)
