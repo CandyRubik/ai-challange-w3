@@ -64,6 +64,8 @@ h1 { margin-top: 3px; font-size: 22px; }
 .message.user { align-self: flex-end; }
 .message.user span { text-align: right; }
 .message.user p { border-color: #6257b5; background: #332d63; }
+.message.assistant.mcp-result p { border-color: #2e6f66; background: #172f32; }
+.message.assistant.mcp-result > span { color: #91e9d0; }
 .message.command p { border-style: dashed; border-color: #6d5b9b; color: #c5b8ee; background: #211d36; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
 .message.command span { color: #a98bea; }
 .typing-indicator { display: flex; gap: 6px; width: fit-content; border: 1px solid #303653; border-radius: 16px; padding: 16px 18px; background: #1a1e32; }
@@ -94,7 +96,6 @@ textarea { resize: none; border: 1px solid #353b5c; border-radius: 14px; padding
 .command-option small { border-radius: 999px; padding: 3px 6px; font: 700 9px ui-monospace, monospace; }
 .command-option small.working { color: #c6a8ff; background: #3b2856; }
 .command-option small.long_term { color: #ffc86e; background: #50391d; }
-.command-option small.mcp { color: #91e9d0; background: #173f3b; }
 
 .memory-panel {
   display: grid;

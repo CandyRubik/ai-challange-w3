@@ -103,8 +103,10 @@ class ChatSendResponse(StrictModel):
 
 class McpToolView(StrictModel):
     name: str
+    title: str
     description: str
     input_schema: dict
+    output_schema: dict | None = None
 
 
 class McpStatus(StrictModel):

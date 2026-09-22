@@ -208,19 +208,6 @@ class ChatSessionService:
                 code="task_action_forbidden",
             )
         policy.check_request(content)
-        if self._mcp is not None and self._mcp.handles(content):
-            try:
-                answer = self._mcp.execute_chat_command(content)
-            except McpError as error:
-                answer = f"MCP · Ошибка: {error}"
-            assert answer is not None
-            return self._response(
-                self._repository.append_command_exchange(
-                    session_id,
-                    content.strip(),
-                    answer,
-                ),
-            )
         profile = None
         if self._profile_repository is not None:
             stored_profile = self._profile_repository.get(session.profile_id)
