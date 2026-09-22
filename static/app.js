@@ -97,15 +97,6 @@ const memoryCommands = [
   { name: "/knowledge", layer: "long_term", category: "knowledge", description: "знание для будущих чатов" },
 ];
 
-const mcpCommands = [
-  { name: "/mcp-help", kind: "mcp", description: "справка по MCP-командам" },
-  { name: "/mcp-tools", kind: "mcp", description: "инструменты подключённого MCP" },
-  { name: "/deepwiki", kind: "mcp", description: "вопрос о GitHub-репозитории" },
-  { name: "/mcp-call", kind: "mcp", description: "прямой вызов MCP-инструмента" },
-];
-
-const chatCommands = [...memoryCommands, ...mcpCommands];
-
 const profileLabels = {
   tone: {
     neutral: "нейтральный",
@@ -691,7 +682,7 @@ function enqueueMessage(content) {
 function commandMatches() {
   const value = input.value;
   if (!value.startsWith("/") || /\s/.test(value)) return [];
-  return chatCommands.filter((command) => command.name.startsWith(value.toLowerCase()));
+  return memoryCommands.filter((command) => command.name.startsWith(value.toLowerCase()));
 }
 
 function hideCommandMenu() {
@@ -727,10 +718,8 @@ function renderCommandMenu() {
     const description = document.createElement("span");
     description.textContent = command.description;
     const layer = document.createElement("small");
-    layer.className = command.kind === "mcp" ? "mcp" : command.layer;
-    layer.textContent = command.kind === "mcp"
-      ? "MCP"
-      : (command.layer === "working" ? "WORKING" : "LONG-TERM");
+    layer.className = command.layer;
+    layer.textContent = command.layer === "working" ? "WORKING" : "LONG-TERM";
     option.append(name, description, layer);
     option.addEventListener("mousedown", (event) => {
       event.preventDefault();
@@ -822,13 +811,16 @@ function renderMessages(items, updateState = true) {
     const article = document.createElement("article");
     const kind = message.kind || "message";
     article.className = `message ${message.role} ${kind}`;
+    const isMcp = message.role === "assistant"
+      && message.content.toLocaleUpperCase().startsWith("ИСТОЧНИК: MCP · ");
+    if (isMcp) article.classList.add("mcp-result");
     if (message.refusal && message.role === "assistant") article.classList.add("invariant-refusal");
     const label = document.createElement("span");
-    label.textContent = kind === "command"
-      ? (message.content.startsWith("MCP ·") || message.content.startsWith("/mcp") || message.content.startsWith("/deepwiki")
-        ? (message.role === "user" ? "Вы · MCP-команда" : "MCP")
-        : "Команда памяти")
-      : (message.role === "user" ? "Вы" : (message.refusal ? "Отказ · Инварианты" : "Агент"));
+    label.textContent = isMcp
+      ? message.content.split("\n", 1)[0].replace(/^источник:\s*/i, "")
+      : (kind === "command"
+        ? "Команда памяти"
+        : (message.role === "user" ? "Вы" : (message.refusal ? "Отказ · Инварианты" : "Агент")));
     let content;
     if (kind === "pending") {
       content = document.createElement("div");
@@ -841,7 +833,9 @@ function renderMessages(items, updateState = true) {
       );
     } else {
       content = document.createElement("p");
-      content.textContent = message.content;
+      content.textContent = isMcp
+        ? message.content.split("\n").slice(1).join("\n").trimStart()
+        : message.content;
     }
     article.append(label, content);
     return article;

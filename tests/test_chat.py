@@ -49,9 +49,6 @@ def test_frontend_keeps_composer_visible_and_sends_with_enter() -> None:
     assert "!event.shiftKey" in javascript
     assert "form.requestSubmit()" in javascript
     assert "memoryCommands" in javascript
-    assert "mcpCommands" in javascript
-    assert 'name: "/mcp-tools", kind: "mcp"' in javascript
-    assert 'name: "/deepwiki", kind: "mcp"' in javascript
     assert 'name: "/goal", layer: "working"' in javascript
     assert 'name: "/profile", layer: "long_term"' in javascript
     assert "parsedMemoryCommand(content)" in javascript
@@ -71,6 +68,8 @@ def test_frontend_keeps_composer_visible_and_sends_with_enter() -> None:
     assert "enqueueMessage(content)" in javascript
     assert 'kind: "pending"' in javascript
     assert "typing-indicator" in styles
+    assert 'startsWith("ИСТОЧНИК: MCP · ")' in javascript
+    assert "mcp-result" in styles
     assert "input.disabled = value" not in javascript
     assert "grid-template-rows: auto minmax(0, 1fr) auto" in styles
     assert ".conversation" in styles and "min-height: 0" in styles

@@ -162,7 +162,7 @@ def health() -> dict[str, bool | str]:
     return {
         "status": "ok",
         "deepseek_configured": bool(os.getenv("DEEPSEEK_API_KEY")),
-        "mcp_endpoint": get_mcp_service().server_url,
+        "mcp_transport": "stdio",
     }
 
 
@@ -174,7 +174,7 @@ def mcp_status(service: McpService = Depends(get_mcp_service)) -> McpStatus:
         raise HTTPException(status_code=502, detail=str(error)) from None
     return McpStatus(
         connected=True,
-        endpoint=service.server_url,
+        endpoint=service.endpoint,
         tool_count=len(tools),
     )
 
@@ -187,8 +187,10 @@ def list_mcp_tools(
         return [
             McpToolView(
                 name=tool.name,
+                title=tool.title,
                 description=tool.description,
                 input_schema=tool.input_schema,
+                output_schema=tool.output_schema,
             )
             for tool in service.list_tools()
         ]

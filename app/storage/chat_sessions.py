@@ -55,10 +55,6 @@ class ChatSessionRepository(Protocol):
 
     def append_command(self, session_id: str, command_text: str) -> StoredSession: ...
 
-    def append_command_exchange(
-        self, session_id: str, command_text: str, assistant_content: str,
-    ) -> StoredSession: ...
-
     def append_refusal(
         self, session_id: str, user_content: str, assistant_content: str,
     ) -> StoredSession: ...
@@ -345,21 +341,6 @@ class SQLiteChatSessionRepository:
             )
         return self.get(session_id)
 
-    def append_command_exchange(
-        self, session_id: str, command_text: str, assistant_content: str,
-    ) -> StoredSession:
-        with self._connection() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            session = self._load_session(connection, session_id)
-            self._append_exchange(
-                connection,
-                session,
-                command_text,
-                assistant_content,
-                kind="command",
-            )
-        return self.get(session_id)
-
     def append_refusal(
         self, session_id: str, user_content: str, assistant_content: str,
     ) -> StoredSession:
@@ -375,7 +356,7 @@ class SQLiteChatSessionRepository:
     def _append_exchange(
         self, connection: sqlite3.Connection, session: StoredSession,
         user_content: str, assistant_content: str,
-        *, refusal: bool = False, kind: str = "message",
+        *, refusal: bool = False,
     ) -> None:
         timestamp = self._timestamp(datetime.now(timezone.utc))
         position = len(session.messages)
@@ -385,12 +366,12 @@ class SQLiteChatSessionRepository:
         connection.executemany(
             """
             INSERT INTO chat_messages
-                (id, session_id, position, role, kind, content, created_at, is_refusal)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (id, session_id, position, role, content, created_at, is_refusal)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                (str(uuid4()), session.id, position, "user", kind, user_content, timestamp, int(refusal)),
-                (str(uuid4()), session.id, position + 1, "assistant", kind, assistant_content, timestamp, int(refusal)),
+                (str(uuid4()), session.id, position, "user", user_content, timestamp, int(refusal)),
+                (str(uuid4()), session.id, position + 1, "assistant", assistant_content, timestamp, int(refusal)),
             ],
         )
         connection.execute(

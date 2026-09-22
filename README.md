@@ -5,8 +5,9 @@ Standalone-чат с агентом, профилями пользователе
 данные текущей задачи и знания каждого профиля в разных областях памяти.
 
 Агент изолирован от кода на уровне архитектуры: ему передаются системная
-инструкция, контекст оркестрации, память и снимок состояния задачи. У провайдера нет tools/function
-calling, доступа к файлам, репозиторию, shell или окружению процесса.
+инструкция, контекст оркестрации, память и снимок состояния задачи. У провайдера нет native
+tools/function calling, доступа к файлам, репозиторию, shell или окружению процесса.
+Для прогноза погоды host-приложение даёт агенту один ограниченный MCP-инструмент.
 
 ## Что внутри
 
@@ -24,6 +25,7 @@ calling, доступа к файлам, репозиторию, shell или о
 - SQLite-хранилище всех слоёв, переживающее перезапуск;
 - input/output policy для ограничения пользовательского ввода и ответа;
 - изолированный DeepSeek provider;
+- собственный Weather MCP-сервер вокруг Open-Meteo;
 - тесты backend, provider и frontend syntax check в CI.
 
 Benchmark, runtime debug-настройки, multi-agent логика, workflow-интеграции и
@@ -55,8 +57,8 @@ uvicorn app.main:app --reload --port 8000
 ## API
 
 - `GET /api/health` — состояние backend и наличие ключа DeepSeek;
-- `GET /api/mcp/status` — проверить MCP-соединение и число инструментов;
-- `GET /api/mcp/tools` — получить описания инструментов MCP;
+- `GET /api/mcp/status` — состояние локального MCP-сервера;
+- `GET /api/mcp/tools` — описание и JSON Schema MCP-инструментов;
 - `GET /api/invariants` — общие правила ответов;
 - `PUT /api/invariants` — сохранить правила с актуальной `revision`;
 - `GET /api/profiles` — список профилей;
@@ -81,6 +83,7 @@ HTTP API → ChatSessionService → ProfileOnboarding / TaskOrchestrator
                     │       OrchestrationContext + MemoryContext + TaskContext
                     │                       ↓
                     │               Agent → PromptBuilder → DeepSeek API
+                    ├──→ MCP router → stdio → Weather MCP → Open-Meteo API
                     ├──→ MemoryRuntime → MemoryExtractor → MemoryRepository
                     └──→ ChatSessionRepository → SQLite
 ```
@@ -96,6 +99,8 @@ HTTP API → ChatSessionService → ProfileOnboarding / TaskOrchestrator
   состояния задачи, блокировки и проверка версий;
 - `app/services/chat_sessions.py` — координация этих частей и адаптация к HTTP-моделям;
 - `app/agents/` — вызов модели, политики ввода/вывода и схемы результатов этапов.
+- `app/mcp/` — собственный MCP-сервер и типизированный weather-инструмент;
+- `app/services/mcp.py` — stdio-клиент, discovery, валидация и вызов инструмента.
 
 Профиль передаётся через `OrchestrationContext.profile`. Записи памяти
 передаются отдельно через `MemoryContext`; история диалога остаётся отдельной
@@ -111,21 +116,28 @@ HTTP API → ChatSessionService → ProfileOnboarding / TaskOrchestrator
 отдельным `OnboardingState`, а его сохранение использует существующие столбцы
 профиля без миграции данных.
 
-## MCP-клиент
+## Weather MCP
 
-Для задания дня 16 подключён официальный публичный DeepWiki MCP. Его инструменты
-автоматически выбираются моделью для естественных запросов о конкретном
-GitHub-репозитории. Например:
+Агент автоматически вызывает `get_weather_forecast`, когда вопрос требует
+актуального прогноза и в нём указан город. MCP-сервер сначала разрешает название
+города через Open-Meteo Geocoding API, затем получает прогноз и возвращает
+структурированный результат. В чате такой ответ помечается как
+`MCP · get_weather_forecast`.
+
+Пример запроса:
 
 ```text
-Изучи modelcontextprotocol/python-sdk через DeepWiki и объясни, как устроен MCP Client.
+Нужен ли завтра зонт в Москве?
 ```
 
-Команды `/mcp-tools`, `/deepwiki` и `/mcp-call` остаются для диагностики и
-прямого управления.
-Отдельный `python -m app.mcp_client` оставлен для терминальной smoke-проверки.
+Проверить регистрацию и входную схему без вызова погодного API:
 
-Подробности, проверка и сценарий видео: [День 16](docs/day16-mcp.md).
+```bash
+curl http://127.0.0.1:8000/api/mcp/tools
+```
+
+Подробности реализации, команды проверки и сценарий видео:
+[День 17](docs/day17-mcp.md).
 
 ## Инварианты ответов
 
