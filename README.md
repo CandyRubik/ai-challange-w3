@@ -55,6 +55,8 @@ uvicorn app.main:app --reload --port 8000
 ## API
 
 - `GET /api/health` — состояние backend и наличие ключа DeepSeek;
+- `GET /api/mcp/status` — проверить MCP-соединение и число инструментов;
+- `GET /api/mcp/tools` — получить описания инструментов MCP;
 - `GET /api/invariants` — общие правила ответов;
 - `PUT /api/invariants` — сохранить правила с актуальной `revision`;
 - `GET /api/profiles` — список профилей;
@@ -108,6 +110,22 @@ HTTP API → ChatSessionService → ProfileOnboarding / TaskOrchestrator
 явными действиями и структурированными ошибками переходов. Состояние интервью представлено
 отдельным `OnboardingState`, а его сохранение использует существующие столбцы
 профиля без миграции данных.
+
+## MCP-клиент
+
+Для задания дня 16 подключён официальный публичный DeepWiki MCP. Его инструменты
+автоматически выбираются моделью для естественных запросов о конкретном
+GitHub-репозитории. Например:
+
+```text
+Изучи modelcontextprotocol/python-sdk через DeepWiki и объясни, как устроен MCP Client.
+```
+
+Команды `/mcp-tools`, `/deepwiki` и `/mcp-call` остаются для диагностики и
+прямого управления.
+Отдельный `python -m app.mcp_client` оставлен для терминальной smoke-проверки.
+
+Подробности, проверка и сценарий видео: [День 16](docs/day16-mcp.md).
 
 ## Инварианты ответов
 

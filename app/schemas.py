@@ -101,6 +101,18 @@ class ChatSendResponse(StrictModel):
     assistant_message: ChatMessage
 
 
+class McpToolView(StrictModel):
+    name: str
+    description: str
+    input_schema: dict
+
+
+class McpStatus(StrictModel):
+    connected: bool
+    endpoint: str
+    tool_count: int
+
+
 MemoryLayer = Literal["working", "long_term"]
 ProfileTone = Literal["neutral", "friendly", "formal", "technical"]
 ProfileDetailLevel = Literal["brief", "balanced", "detailed"]

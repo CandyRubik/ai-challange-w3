@@ -15,6 +15,7 @@ from ..schemas import (
 )
 from ..state.task import TaskContext, TaskConflict, TaskState, approve_plan, pause, replan, require_action, resume
 from ..memory.service import MemoryRepository
+from .mcp import McpError, McpService, McpToolSelectionModel
 from ..storage.chat_sessions import (
     ChatSessionNotFound, ChatSessionRepository, DEFAULT_CHAT_DB_PATH,
     DEFAULT_DB_PATH, SQLiteChatSessionRepository, StoredMessage, StoredSession, StoredTask,
@@ -33,12 +34,16 @@ class ChatSessionService:
         profile_repository: ProfileRepository | None = None,
         profile_interviewer: ProfileInterviewer | None = None,
         *, invariant_repository: SQLiteInvariantRepository | None = None,
+        mcp_service: McpService | None = None,
+        mcp_model: McpToolSelectionModel | None = None,
     ) -> None:
         self._repository = repository
         self._invariants = invariant_repository
         self._agent = agent
         self._memory = MemoryRuntime(memory_repository, memory_extractor)
         self._tasks = TaskOrchestrator(agent)
+        self._mcp = mcp_service
+        self._mcp_model = mcp_model
         self._profile_repository = profile_repository
         self._onboarding = (
             ProfileOnboarding(profile_repository, profile_interviewer)
@@ -203,6 +208,19 @@ class ChatSessionService:
                 code="task_action_forbidden",
             )
         policy.check_request(content)
+        if self._mcp is not None and self._mcp.handles(content):
+            try:
+                answer = self._mcp.execute_chat_command(content)
+            except McpError as error:
+                answer = f"MCP · Ошибка: {error}"
+            assert answer is not None
+            return self._response(
+                self._repository.append_command_exchange(
+                    session_id,
+                    content.strip(),
+                    answer,
+                ),
+            )
         profile = None
         if self._profile_repository is not None:
             stored_profile = self._profile_repository.get(session.profile_id)
@@ -226,11 +244,22 @@ class ChatSessionService:
             session_id,
             session.profile_id,
         )
+        invocation = None
+        if self._mcp is not None and self._mcp_model is not None:
+            try:
+                invocation = self._mcp.maybe_invoke(content, self._mcp_model)
+            except McpError as error:
+                answer = f"MCP · Ошибка: {error}"
+                updated = self._repository.append_exchange(
+                    session_id, content.strip(), policy.apply(answer),
+                )
+                return self._response(updated)
         answer = self._agent.respond(
             context,
             content,
             orchestration=OrchestrationContext(profile=profile, invariants=policy.settings),
             memory=memory,
+            external_context=None if invocation is None else invocation.external_context(),
         )
         updated = self._repository.append_exchange(session_id, content.strip(), policy.apply(answer))
         self._memory.remember(

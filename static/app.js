@@ -97,6 +97,15 @@ const memoryCommands = [
   { name: "/knowledge", layer: "long_term", category: "knowledge", description: "знание для будущих чатов" },
 ];
 
+const mcpCommands = [
+  { name: "/mcp-help", kind: "mcp", description: "справка по MCP-командам" },
+  { name: "/mcp-tools", kind: "mcp", description: "инструменты подключённого MCP" },
+  { name: "/deepwiki", kind: "mcp", description: "вопрос о GitHub-репозитории" },
+  { name: "/mcp-call", kind: "mcp", description: "прямой вызов MCP-инструмента" },
+];
+
+const chatCommands = [...memoryCommands, ...mcpCommands];
+
 const profileLabels = {
   tone: {
     neutral: "нейтральный",
@@ -682,7 +691,7 @@ function enqueueMessage(content) {
 function commandMatches() {
   const value = input.value;
   if (!value.startsWith("/") || /\s/.test(value)) return [];
-  return memoryCommands.filter((command) => command.name.startsWith(value.toLowerCase()));
+  return chatCommands.filter((command) => command.name.startsWith(value.toLowerCase()));
 }
 
 function hideCommandMenu() {
@@ -718,8 +727,10 @@ function renderCommandMenu() {
     const description = document.createElement("span");
     description.textContent = command.description;
     const layer = document.createElement("small");
-    layer.className = command.layer;
-    layer.textContent = command.layer === "working" ? "WORKING" : "LONG-TERM";
+    layer.className = command.kind === "mcp" ? "mcp" : command.layer;
+    layer.textContent = command.kind === "mcp"
+      ? "MCP"
+      : (command.layer === "working" ? "WORKING" : "LONG-TERM");
     option.append(name, description, layer);
     option.addEventListener("mousedown", (event) => {
       event.preventDefault();
@@ -814,7 +825,9 @@ function renderMessages(items, updateState = true) {
     if (message.refusal && message.role === "assistant") article.classList.add("invariant-refusal");
     const label = document.createElement("span");
     label.textContent = kind === "command"
-      ? "Команда памяти"
+      ? (message.content.startsWith("MCP ·") || message.content.startsWith("/mcp") || message.content.startsWith("/deepwiki")
+        ? (message.role === "user" ? "Вы · MCP-команда" : "MCP")
+        : "Команда памяти")
       : (message.role === "user" ? "Вы" : (message.refusal ? "Отказ · Инварианты" : "Агент"));
     let content;
     if (kind === "pending") {
