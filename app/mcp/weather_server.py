@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from pathlib import Path
+import re
 from typing import Annotated, Protocol
 from zoneinfo import ZoneInfo
 
@@ -12,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+REPORTS_DIRECTORY = Path(__file__).resolve().parents[2] / "data" / "reports"
 
 
 class WeatherDay(BaseModel):
@@ -37,6 +40,24 @@ class WeatherForecast(BaseModel):
     longitude: float
     days: list[WeatherDay]
     source: str = "Open-Meteo"
+
+
+class WeatherReportSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    location: str
+    days_count: int
+    temperature_min_c: float
+    temperature_max_c: float
+    precipitation_probability_max: int
+    markdown: str
+
+
+class SavedWeatherReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    filename: str
+    download_url: str
 
 
 class HourlyWeatherPoint(BaseModel):
@@ -442,8 +463,10 @@ class OpenMeteoWeatherApi:
 def create_weather_server(
     weather_api: WeatherApi | None = None,
     repository: object | None = None,
+    report_directory: Path | None = None,
 ) -> MCPServer:
     api = weather_api or OpenMeteoWeatherApi()
+    reports = (report_directory or REPORTS_DIRECTORY).resolve()
     if repository is None:
         from ..scheduler.storage import SQLiteWeatherScheduleRepository
 
@@ -452,6 +475,9 @@ def create_weather_server(
         "weather",
         instructions=(
             "Use get_weather_forecast for current weather-forecast questions. "
+            "Use summarize_forecast to summarize a forecast returned by "
+            "get_weather_forecast. Use save_weather_report to save that summary "
+            "when the user asks for a report file. "
             "Use create_weather_schedule only when the user explicitly requests "
             "periodic collection. It collects hourly weather in the background. "
             "Use get_weather_summary for the latest stored forecast and "
@@ -481,6 +507,62 @@ def create_weather_server(
     ) -> WeatherForecast:
         """Получить прогноз погоды для города через Open-Meteo."""
         return await api.forecast(city, forecast_days)
+
+    @server.tool(title="Сводка прогноза")
+    async def summarize_forecast(forecast: WeatherForecast) -> WeatherReportSummary:
+        """Сжато обработать структурированный прогноз погоды."""
+        if not forecast.days:
+            raise ToolError("В прогнозе нет дней для сводки")
+        minimum = min(day.temperature_min_c for day in forecast.days)
+        maximum = max(day.temperature_max_c for day in forecast.days)
+        precipitation = max(
+            day.precipitation_probability_max for day in forecast.days
+        )
+        dates = f"{forecast.days[0].date} — {forecast.days[-1].date}"
+        conditions = ", ".join(dict.fromkeys(day.condition for day in forecast.days))
+        markdown = (
+            f"# Прогноз погоды: {forecast.location}\n\n"
+            f"Период: {dates} ({len(forecast.days)} дн.).\n\n"
+            f"Температура: от {minimum:g} до {maximum:g} °C.\n\n"
+            f"Максимальная вероятность осадков: {precipitation}%.\n\n"
+            f"Ожидаемые условия: {conditions}.\n\n"
+            f"Источник данных: {forecast.source}.\n"
+        )
+        return WeatherReportSummary(
+            location=forecast.location,
+            days_count=len(forecast.days),
+            temperature_min_c=minimum,
+            temperature_max_c=maximum,
+            precipitation_probability_max=precipitation,
+            markdown=markdown,
+        )
+
+    @server.tool(title="Сохранить отчет о погоде")
+    async def save_weather_report(
+        content: Annotated[str, Field(min_length=1, max_length=20_000)],
+        filename: Annotated[
+            str,
+            Field(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}\.md$"),
+        ],
+    ) -> SavedWeatherReport:
+        """Сохранить markdown-отчет в выделенную директорию приложения."""
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}\.md", filename):
+            raise ToolError("Недопустимое имя файла отчета")
+        try:
+            reports.mkdir(parents=True, exist_ok=True)
+            target = (reports / filename).resolve()
+            if target.parent != reports:
+                raise ToolError("Файл отчета должен находиться в выделенной директории")
+            with target.open("x", encoding="utf-8") as report_file:
+                report_file.write(content)
+        except FileExistsError as error:
+            raise ToolError("Отчет с таким именем уже существует") from error
+        except OSError as error:
+            raise ToolError("Не удалось сохранить отчет") from error
+        return SavedWeatherReport(
+            filename=filename,
+            download_url=f"/api/reports/{filename}",
+        )
 
     @server.tool(title="Создать расписание сбора погоды")
     async def create_weather_schedule(

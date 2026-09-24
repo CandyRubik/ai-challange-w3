@@ -876,6 +876,75 @@ function renderSessions() {
   }));
 }
 
+async function showReportPreview(reportUrl, filename) {
+  let response;
+  try {
+    response = await fetch(`${reportUrl}?preview=true`);
+  } catch {
+    status.textContent = "Не удалось загрузить предпросмотр отчета";
+    return;
+  }
+  if (!response.ok) {
+    status.textContent = "Предпросмотр отчета недоступен";
+    return;
+  }
+
+  const markdown = await response.text();
+  const dialog = document.createElement("dialog");
+  dialog.className = "report-preview-dialog";
+  const panel = document.createElement("div");
+  panel.className = "report-preview-panel";
+  const header = document.createElement("header");
+  const heading = document.createElement("div");
+  const eyebrow = document.createElement("span");
+  eyebrow.textContent = "ПРЕДПРОСМОТР ОТЧЕТА";
+  const title = document.createElement("h2");
+  title.textContent = markdown.match(/^#\s+(.+)$/m)?.[1] || "Отчет о погоде";
+  heading.append(eyebrow, title);
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "report-preview-close";
+  close.textContent = "Закрыть";
+  close.addEventListener("click", () => dialog.close());
+  header.append(heading, close);
+
+  const content = document.createElement("div");
+  content.className = "report-preview-content";
+  for (const line of markdown.split(/\r?\n/)) {
+    if (!line.trim() || line.startsWith("# ")) continue;
+    const match = line.match(/^([^:]+):\s*(.*)$/);
+    const row = document.createElement("p");
+    if (match) {
+      const label = document.createElement("strong");
+      label.textContent = match[1];
+      const value = document.createElement("span");
+      value.textContent = match[2];
+      row.append(label, value);
+    } else {
+      row.textContent = line;
+    }
+    content.append(row);
+  }
+
+  const footer = document.createElement("footer");
+  const file = document.createElement("span");
+  file.textContent = filename;
+  const download = document.createElement("a");
+  download.href = reportUrl;
+  download.download = filename;
+  download.className = "report-preview-download";
+  download.textContent = "Скачать отчет";
+  footer.append(file, download);
+  panel.append(header, content, footer);
+  dialog.append(panel);
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
 function renderMessages(items, updateState = true) {
   if (updateState) {
     currentMessages = items;
@@ -893,9 +962,19 @@ function renderMessages(items, updateState = true) {
       && message.content.toLocaleUpperCase().startsWith("ИСТОЧНИК: MCP · ");
     if (isMcp) article.classList.add("mcp-result");
     if (message.refusal && message.role === "assistant") article.classList.add("invariant-refusal");
+    const sourceMatch = isMcp
+      ? message.content.match(/^Источник:\s*MCP\s·\s*[A-Za-z0-9_]+(?:\s*→\s*[A-Za-z0-9_]+)*/u)
+      : null;
+    const reportMatch = isMcp
+      ? message.content.match(/\/api\/reports\/([A-Za-z0-9_-]+\.md)/)
+      : null;
     const label = document.createElement("span");
     label.textContent = isMcp
-      ? message.content.split("\n", 1)[0].replace(/^источник:\s*/i, "")
+      ? (reportMatch
+        ? "MCP · отчет из трех шагов"
+        : (sourceMatch
+          ? sourceMatch[0].replace(/^Источник:\s*/i, "")
+          : message.content.split("\n", 1)[0].replace(/^источник:\s*/i, "")))
       : (kind === "command"
         ? "Команда памяти"
         : (message.role === "user" ? "Вы" : (message.refusal ? "Отказ · Инварианты" : "Агент")));
@@ -911,11 +990,55 @@ function renderMessages(items, updateState = true) {
       );
     } else {
       content = document.createElement("p");
-      content.textContent = isMcp
-        ? message.content.split("\n").slice(1).join("\n").trimStart()
+      let displayContent = isMcp
+        ? (sourceMatch
+          ? message.content.slice(sourceMatch[0].length).trimStart()
+          : message.content.split("\n").slice(1).join("\n").trimStart())
         : message.content;
+      if (reportMatch) {
+        displayContent = displayContent
+          .replace(/[,;]?\s*скачать\s+(?:его\s+)?(?:можно\s+)?по адресу\s*/iu, " ")
+          .replace(/\/api\/reports\/[A-Za-z0-9_-]+\.md/gu, "")
+          .replace(/[ \t]{2,}/gu, " ")
+          .trim();
+      }
+      content.textContent = displayContent;
     }
     article.append(label, content);
+    if (reportMatch) {
+      const filename = reportMatch[1];
+      const card = document.createElement("section");
+      card.className = "report-card";
+
+      const icon = document.createElement("span");
+      icon.className = "report-card-icon";
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = "MD";
+
+      const details = document.createElement("div");
+      details.className = "report-card-details";
+      const title = document.createElement("strong");
+      title.textContent = "Прогноз погоды";
+      const name = document.createElement("small");
+      name.textContent = "Отчет · Markdown · 3 дня";
+      details.append(title, name);
+
+      const preview = document.createElement("button");
+      preview.type = "button";
+      preview.className = "report-preview";
+      preview.textContent = "Предпросмотр";
+      preview.addEventListener("click", () => showReportPreview(reportMatch[0], filename));
+
+      const download = document.createElement("a");
+      download.className = "report-download";
+      download.href = reportMatch[0];
+      download.textContent = "Скачать";
+      download.setAttribute("download", filename);
+      download.setAttribute("aria-label", `Скачать отчет ${filename}`);
+
+      card.append(icon, details, preview, download);
+      article.append(card);
+    }
     return article;
   }));
   renderTaskActivity(currentSession?.task);
