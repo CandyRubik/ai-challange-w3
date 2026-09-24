@@ -270,7 +270,13 @@ def test_application_exposes_mcp_status_and_tool_schema() -> None:
 def test_real_stdio_server_exposes_weather_tool() -> None:
     tools = McpService().list_tools()
 
-    assert [tool.name for tool in tools] == ["get_weather_forecast"]
+    assert [tool.name for tool in tools] == [
+        "get_weather_forecast",
+        "create_weather_schedule",
+        "list_weather_schedules",
+        "get_weather_summary",
+        "cancel_weather_schedule",
+    ]
     assert tools[0].input_schema["required"] == ["city"]
     assert tools[0].output_schema is not None
     assert "days" in tools[0].output_schema["properties"]
