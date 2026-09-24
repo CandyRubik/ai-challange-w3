@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - trunk
 
 permissions:
   contents: read
@@ -44,3 +45,53 @@ jobs:
 
       - name: Check JavaScript syntax
         run: node --check static/app.js
+
+  deploy:
+    name: Deploy to VDS
+    if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'trunk')
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          VDS_DEPLOY_KEY: ${{ secrets.VDS_DEPLOY_KEY }}
+          VDS_KNOWN_HOSTS: ${{ vars.VDS_KNOWN_HOSTS }}
+        run: |
+          test -n "$VDS_DEPLOY_KEY" || { echo "Missing repository secret VDS_DEPLOY_KEY" >&2; exit 1; }
+          test -n "$VDS_KNOWN_HOSTS" || { echo "Missing repository variable VDS_KNOWN_HOSTS" >&2; exit 1; }
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VDS_DEPLOY_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$VDS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      - name: Sync application files
+        env:
+          VDS_HOST: ${{ vars.VDS_HOST }}
+          VDS_USER: ${{ vars.VDS_USER }}
+        run: |
+          test -n "$VDS_HOST" || { echo "Missing repository variable VDS_HOST" >&2; exit 1; }
+          test -n "$VDS_USER" || { echo "Missing repository variable VDS_USER" >&2; exit 1; }
+          rsync -az \
+            --exclude='.git/' \
+            --exclude='.env' \
+            --exclude='.venv/' \
+            --exclude='data/' \
+            --exclude='__pycache__/' \
+            ./ "$VDS_USER@$VDS_HOST:~/ai-challange-w3/"
+
+      - name: Install dependencies and restart services
+        env:
+          VDS_HOST: ${{ vars.VDS_HOST }}
+          VDS_USER: ${{ vars.VDS_USER }}
+        run: |
+          ssh "$VDS_USER@$VDS_HOST" 'set -eu
+            cd "$HOME/ai-challange-w3"
+            test -f .env
+            test -x .venv/bin/pip
+            .venv/bin/pip install --disable-pip-version-check -r requirements.txt
+            sudo systemctl restart ai-challenge-weather-web.service ai-challenge-weather-worker.service
+            sudo systemctl is-active ai-challenge-weather-web.service ai-challenge-weather-worker.service
+          '
