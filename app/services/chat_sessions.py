@@ -190,25 +190,16 @@ class ChatSessionService:
             self._profile_repository.get(profile_id)
         self._repository.clear(profile_id)
 
-    def send(
-        self, session_id: str, content: str, *, external_context: str | None = None,
-        external_context_label: str | None = None,
-    ) -> ChatSendResponse:
+    def send(self, session_id: str, content: str) -> ChatSendResponse:
         if not content.strip():
             raise AgentInputError("Сообщение не должно быть пустым")
         policy = self._policy()
         try:
-            return self._send(
-                session_id, content, policy, external_context, external_context_label,
-            )
+            return self._send(session_id, content, policy)
         except InvariantViolation as error:
             return self._refuse(session_id, content, error)
 
-    def _send(
-        self, session_id: str, content: str, policy: InvariantPolicy,
-        external_context: str | None = None,
-        external_context_label: str | None = None,
-    ) -> ChatSendResponse:
+    def _send(self, session_id: str, content: str, policy: InvariantPolicy) -> ChatSendResponse:
         session = self._repository.get(session_id)
         if session.task is not None and session.task.context.state != TaskState.DONE:
             ctx = session.task.context
@@ -255,21 +246,7 @@ class ChatSessionService:
             content,
             orchestration=OrchestrationContext(profile=profile, invariants=policy.settings),
             memory=memory,
-            external_context=(
-                "\n\n".join(
-                    item for item in (
-                        external_context,
-                        None if invocation is None else invocation.external_context(),
-                    ) if item
-                ) or None
-            ),
-            **(
-                {"external_context_label": (
-                    f"{external_context_label} и MCP · {invocation.tool_name}"
-                    if invocation else external_context_label
-                )}
-                if external_context_label else {}
-            ),
+            external_context=None if invocation is None else invocation.external_context(),
         )
         updated = self._repository.append_exchange(session_id, content.strip(), policy.apply(answer))
         self._memory.remember(

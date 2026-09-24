@@ -18,20 +18,6 @@ class ChatSendRequest(StrictModel):
     content: Annotated[str, Field(min_length=1, max_length=12_000)]
 
 
-class WeatherChatSendRequest(ChatSendRequest):
-    city: Annotated[str, Field(min_length=2, max_length=100)]
-
-
-class AuthLoginRequest(StrictModel):
-    password: Annotated[str, Field(min_length=1, max_length=1024)]
-
-
-class AuthSessionView(StrictModel):
-    authenticated: bool
-    required: bool
-    role: Literal["owner", "anonymous"]
-
-
 class ChatSessionCreateRequest(StrictModel):
     profile_id: str = "default"
 
@@ -43,11 +29,6 @@ class ChatMessage(StrictModel):
     refusal: bool = False
     content: str
     created_at: datetime
-
-
-class WeatherChatSessionView(StrictModel):
-    id: str
-    messages: list[ChatMessage]
 
 
 class TaskStartRequest(StrictModel):

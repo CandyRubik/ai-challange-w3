@@ -6,7 +6,7 @@
     <meta name="description" content="Чат с агентом и автоматической трёхслойной памятью" />
     <title>AI Challenge W3</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/styles.css?v=day18-owner-only-2" />
+    <link rel="stylesheet" href="/styles.css?v=minimal-shell-1" />
   </head>
   <body>
     <main class="chat-shell">
@@ -24,11 +24,9 @@
           <button id="new-profile" class="quiet-button" type="button">＋ Добавить профиль</button>
         </section>
         <button id="new-session" class="primary" type="button">＋ Новый чат</button>
-        <button id="open-weather" class="quiet-button weather-menu" type="button" aria-pressed="false">🌦 Погода</button>
         <button id="open-invariants" class="quiet-button invariants-menu" type="button">Правила ответа <span id="invariant-count">…</span></button>
         <nav id="sessions" aria-label="Сессии чата"></nav>
         <button id="clear-database" class="danger" type="button">Очистить чаты профиля</button>
-        <button id="logout-button" class="quiet-button" type="button">Выйти</button>
 
       </aside>
 
@@ -96,55 +94,6 @@
             <button id="task-replan" class="secondary" type="button">Пересмотреть план</button>
           </div>
           <p id="task-note" class="task-hint" role="status"></p>
-        </section>
-
-        <section id="weather-dashboard" class="weather-dashboard" aria-label="Погодный дашборд">
-          <header class="weather-topbar">
-            <div>
-              <p class="eyebrow">ПОЧАСОВОЕ ОБНОВЛЕНИЕ</p>
-              <h1>Погода в Москве</h1>
-              <p id="weather-updated" class="weather-updated">Загружаю данные…</p>
-            </div>
-            <div class="weather-topbar-actions">
-              <button id="refresh-weather" class="secondary" type="button">Обновить</button>
-            </div>
-          </header>
-          <div class="weather-dashboard-content">
-            <section class="weather-summary-panel" aria-labelledby="weather-summary-title">
-              <div class="weather-section-heading">
-                <div><p class="eyebrow">БЛИЖАЙШИЕ 24 ЧАСА</p><h2 id="weather-summary-title">Общий прогноз</h2></div>
-                <span id="weather-status" class="weather-status">Ожидание worker</span>
-              </div>
-              <div id="weather-summary" class="weather-summary-grid"></div>
-            </section>
-            <section class="weather-forecast-panel" aria-labelledby="weather-forecast-title">
-              <div class="weather-section-heading">
-                <div><p id="weather-resolution-label" class="eyebrow">ПОЧАСОВО</p><h2 id="weather-forecast-title">Как одеться</h2></div>
-                <span id="weather-source-label" class="weather-source">Источник прогноза</span>
-              </div>
-              <div id="weather-forecast" class="weather-forecast-grid"></div>
-            </section>
-            <section class="weather-history-panel" aria-labelledby="weather-history-title">
-              <div class="weather-section-heading">
-                <div><p class="eyebrow">ИСТОРИЯ ОБНОВЛЕНИЙ</p><h2 id="weather-history-title">Как менялась погода</h2></div>
-                <span class="weather-source">Последние 72 часа</span>
-              </div>
-              <div id="weather-history-chart" class="weather-history-chart" aria-label="График изменения температуры"></div>
-              <p class="weather-history-note">Каждая точка — прогноз на момент сохранения, а не показание метеостанции. Частота точек зависит от источника.</p>
-              <div id="weather-history" class="weather-history-list"></div>
-            </section>
-            <section class="weather-chat-panel" aria-labelledby="weather-chat-title">
-              <div class="weather-section-heading">
-                <div><p class="eyebrow">ВОПРОСЫ ПО ПРОГНОЗУ</p><h2 id="weather-chat-title">Погодный чат</h2></div>
-                <span class="weather-source">учитывает прогноз и историю</span>
-              </div>
-              <div id="weather-chat-messages" class="weather-chat-messages" aria-live="polite"></div>
-              <form id="weather-chat-form" class="weather-chat-form">
-                <textarea id="weather-chat-input" rows="2" maxlength="4000" placeholder="Например: как одеться к 18:00?" aria-label="Вопрос по погоде" required></textarea>
-                <button id="weather-chat-submit" class="primary" type="submit">Спросить</button>
-              </form>
-            </section>
-          </div>
         </section>
       </section>
 
@@ -240,18 +189,6 @@
         </section>
       </aside>
     </main>
-
-    <div id="auth-gate" class="auth-gate" hidden>
-      <form id="auth-form" class="auth-card">
-        <p class="eyebrow">ЗАЩИЩЁННЫЙ ДОСТУП</p>
-        <h1>Вход</h1>
-        <p>Введите пароль владельца.</p>
-        <label for="auth-password">Пароль</label>
-        <input id="auth-password" type="password" autocomplete="current-password" required />
-        <p id="auth-error" role="alert" hidden></p>
-        <button id="auth-submit" class="primary" type="submit">Войти</button>
-      </form>
-    </div>
 
     <dialog id="invariants-dialog" aria-labelledby="invariants-title">
       <form id="invariants-form">
@@ -358,6 +295,6 @@
         </footer>
       </form>
     </dialog>
-    <script src="/app.js?v=day18-owner-only-2" defer></script>
+    <script src="/app.js?v=minimal-shell-1" defer></script>
   </body>
 </html>

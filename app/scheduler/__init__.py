@@ -1,1 +1,0 @@
-"""Persistent periodic weather collection."""

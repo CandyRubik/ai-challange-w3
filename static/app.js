@@ -68,25 +68,6 @@ const advanceButton = document.querySelector("#task-advance");
 const pauseButton = document.querySelector("#task-pause");
 const resumeButton = document.querySelector("#task-resume");
 const replanButton = document.querySelector("#task-replan");
-const openWeatherButton = document.querySelector("#open-weather");
-const weatherDashboard = document.querySelector("#weather-dashboard");
-const weatherUpdated = document.querySelector("#weather-updated");
-const weatherStatus = document.querySelector("#weather-status");
-const weatherSummary = document.querySelector("#weather-summary");
-const weatherForecast = document.querySelector("#weather-forecast");
-const weatherHistory = document.querySelector("#weather-history");
-const weatherHistoryChart = document.querySelector("#weather-history-chart");
-const refreshWeatherButton = document.querySelector("#refresh-weather");
-const weatherChatMessages = document.querySelector("#weather-chat-messages");
-const weatherChatForm = document.querySelector("#weather-chat-form");
-const weatherChatInput = document.querySelector("#weather-chat-input");
-const weatherChatSubmit = document.querySelector("#weather-chat-submit");
-const authGate = document.querySelector("#auth-gate");
-const authForm = document.querySelector("#auth-form");
-const authPassword = document.querySelector("#auth-password");
-const authError = document.querySelector("#auth-error");
-const authSubmit = document.querySelector("#auth-submit");
-const logoutButton = document.querySelector("#logout-button");
 const STAGES = { planning: "Планирование", awaiting_approval: "Утверждение", execution: "Выполнение", validation: "Проверка", done: "Готово" };
 const ACTIONS = { generate_plan: "Сформировать план", approve_plan: "Утвердить план", execute_step: "Выполнить шаг", validate: "Проверить результат", none: "Задача завершена" };
 let currentSession = null;
@@ -106,10 +87,6 @@ let memorySnapshot = { working: [], long_term: [] };
 let busy = false;
 let activeCommandIndex = 0;
 let queuedMessages = [];
-let weatherData = null;
-let weatherSession = null;
-let weatherChatBusy = false;
-let weatherRefreshTimer = null;
 
 const memoryCommands = [
   { name: "/goal", layer: "working", category: "goal", description: "цель текущей задачи" },
@@ -145,7 +122,6 @@ async function api(path, options = {}) {
     ...options,
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
   });
-  if (response.status === 401) showAuthGate();
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     const detail = data.detail;
@@ -157,60 +133,6 @@ async function api(path, options = {}) {
   return response.status === 204 ? null : response.json();
 }
 
-function showAuthGate() {
-  authGate.hidden = false;
-  window.setTimeout(() => authPassword.focus(), 0);
-}
-
-async function enterAuthenticatedApp() {
-  authGate.hidden = true;
-  await Promise.allSettled([loadProfiles(), loadInvariants()]);
-}
-
-async function initializeAuthentication() {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/session`);
-    const session = await response.json();
-    if (session.authenticated) await enterAuthenticatedApp();
-    else showAuthGate();
-  } catch (_) {
-    showAuthGate();
-  }
-}
-
-authForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  authError.hidden = true;
-  authSubmit.disabled = true;
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: authPassword.value }),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(result.detail || "Не удалось войти");
-    }
-    authPassword.value = "";
-    await enterAuthenticatedApp();
-  } catch (error) {
-    authError.textContent = error.message;
-    authError.hidden = false;
-    authPassword.select();
-  } finally {
-    authSubmit.disabled = false;
-  }
-});
-
-logoutButton.addEventListener("click", async () => {
-  try {
-    const result = await api("/api/auth/logout", { method: "POST" });
-    if (result.required) window.location.reload();
-  } catch (error) {
-    status.textContent = error.message;
-  }
-});
 function invariantPayload() {
   const minimum = Number(document.querySelector("#min-emojis").value);
   const maximum = Number(document.querySelector("#max-sentences").value);
@@ -236,7 +158,7 @@ function renderInvariantPreview() {
   let example = sentences.slice(0, count).join(" ");
   if (settings.uppercase_enabled) example = example.toUpperCase();
   if (settings.emoji_enabled) example += " " + [..."💬✨🙂✅🌟🔹🟢📌🎯💡"].slice(0, Math.min(10, Math.max(1, settings.min_emojis || 1))).join(" ");
-document.querySelector("#invariant-preview-text").textContent = example;
+  document.querySelector("#invariant-preview-text").textContent = example;
 }
 
 function renderActiveInvariants() {
@@ -1108,9 +1030,6 @@ async function activateProfile(profileId) {
   renderMessages([]);
   title.textContent = "Новый чат";
   await loadSessions();
-  if (document.querySelector(".conversation").classList.contains("weather-mode")) {
-    await ensureWeatherChatSession();
-  }
 }
 
 async function loadProfiles() {
@@ -1379,307 +1298,8 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && sidebar.classList.contains("open")) closeNavigation();
 });
 
-function weatherFormatTime(value, options = {}) {
-  if (!value) return "—";
-  const normalized = typeof value === "string" && !(/[zZ]|[+-]\d{2}:\d{2}$/.test(value))
-    ? `${value}+03:00`
-    : value;
-  const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat("ru-RU", {
-    timeZone: "Europe/Moscow",
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    ...options,
-  }).format(date);
-}
-
-function clothingAdvice(point) {
-  const temperature = point.apparent_temperature_c;
-  let advice = temperature <= -15
-    ? "Тёплый зимний пуховик, термослой, шапка, шарф и варежки."
-    : temperature <= -5
-      ? "Утеплённая зимняя куртка, тёплая обувь, шапка и перчатки."
-      : temperature <= 5
-        ? "Тёплая куртка и многослойная одежда; пригодятся шапка и закрытая обувь."
-        : temperature <= 14
-          ? "Лёгкая куртка или тренч поверх слоя с длинным рукавом."
-          : temperature <= 22
-            ? "Лёгкий слой; возьми тонкую кофту на случай ветра."
-            : "Лёгкая дышащая одежда."
-  if (point.precipitation_probability_pct >= 35 || point.precipitation_mm >= 0.2) {
-    advice += " Возьми зонт или непромокаемую верхнюю одежду."
-  }
-  if (point.wind_speed_kmh >= 30) advice += " Ветер сильный — выбирай ветрозащитный верх."
-  return advice;
-}
-
-function weatherStat(label, value) {
-  const card = document.createElement("div");
-  card.className = "weather-stat";
-  const name = document.createElement("span");
-  name.textContent = label;
-  const amount = document.createElement("strong");
-  amount.textContent = value;
-  card.append(name, amount);
-  return card;
-}
-
-function renderWeatherDashboard(data) {
-  weatherData = data;
-  const schedule = data.schedules?.find((item) => item.city.toLocaleLowerCase("ru") === "москва" && item.enabled)
-    || data.schedules?.find((item) => item.enabled);
-  const forecast = schedule?.forecast || [];
-  const summary = data.summary || {};
-  const stepMinutes = schedule?.step_minutes || summary.step_minutes || 60;
-  const stepLabel = stepMinutes >= 60
-    ? `каждые ${stepMinutes / 60} ч`
-    : `каждые ${stepMinutes} мин`;
-  document.getElementById("weather-resolution-label").textContent =
-    stepMinutes === 60 ? "ПОЧАСОВО" : `ШАГ ПРОГНОЗА · ${stepLabel.toLocaleUpperCase("ru")}`;
-  document.getElementById("weather-source-label").textContent = summary.source
-    ? `${summary.source} · ${stepLabel}`
-    : "Ожидание первого прогноза";
-  weatherUpdated.textContent = summary.collected_at
-    ? `Данные собраны ${weatherFormatTime(summary.collected_at)} · прогноз обновляется каждый час`
-    : "Дашборд обновляется каждый час. Ожидаю первый запуск фонового сборщика.";
-  if (schedule?.last_status === "error") {
-    weatherStatus.textContent = `Ошибка сбора: ${schedule.last_error || "источник временно недоступен"}`;
-    weatherStatus.classList.add("error");
-  } else {
-    weatherStatus.textContent = schedule?.enabled
-      ? "Фоновый сбор включён · каждый час"
-      : "Фоновый сбор остановлен";
-    weatherStatus.classList.remove("error");
-  }
-
-  const summaryValues = [
-    ["Ощущается как", summary.apparent_temperature_min_c == null
-      ? "—" : `${Math.round(summary.apparent_temperature_min_c)}…${Math.round(summary.apparent_temperature_max_c)} °C`],
-    ["Температура", summary.temperature_min_c == null
-      ? "—" : `${Math.round(summary.temperature_min_c)}…${Math.round(summary.temperature_max_c)} °C`],
-    ["Осадки · максимум", summary.precipitation_probability_max == null
-      ? "—" : `${summary.precipitation_probability_max}%`],
-    ["Осадки · сумма", summary.precipitation_total_mm == null
-      ? "—" : `${Number(summary.precipitation_total_mm).toFixed(1)} мм`],
-    ["Ветер · максимум", summary.wind_speed_max_kmh == null
-      ? "—" : `${Math.round(summary.wind_speed_max_kmh)} км/ч`],
-  ];
-  weatherSummary.replaceChildren(...summaryValues.map(([label, value]) => weatherStat(label, value)));
-
-  const cards = forecast.map((point, index) => {
-    const card = document.createElement("article");
-    card.className = `weather-hour-card${index === 0 ? " current" : ""}`;
-    const time = document.createElement("strong");
-    time.className = "weather-hour-time";
-    time.textContent = weatherFormatTime(point.forecast_time, { day: undefined, month: undefined });
-    const temperature = document.createElement("div");
-    temperature.className = "weather-hour-temp";
-    const actual = document.createElement("strong");
-    actual.textContent = `${Math.round(point.temperature_c)}°`;
-    const feels = document.createElement("span");
-    feels.textContent = `ощущается ${Math.round(point.apparent_temperature_c)}°`;
-    temperature.append(actual, feels);
-    const condition = document.createElement("p");
-    condition.className = "weather-hour-condition";
-    condition.textContent = point.condition;
-    const details = document.createElement("div");
-    details.className = "weather-hour-details";
-    [
-      `☂ ${point.precipitation_probability_pct}% · ${Number(point.precipitation_mm).toFixed(1)} мм`,
-      `↗ ${Math.round(point.wind_speed_kmh)} км/ч`,
-      `Влажность ${point.relative_humidity_pct}%`,
-    ].forEach((value) => {
-      const chip = document.createElement("span");
-      chip.textContent = value;
-      details.append(chip);
-    });
-    const outfit = document.createElement("p");
-    outfit.className = "weather-outfit";
-    outfit.textContent = clothingAdvice(point);
-    card.append(time, temperature, condition, details, outfit);
-    return card;
-  });
-  if (!cards.length) {
-    const empty = document.createElement("p");
-    empty.className = "weather-empty";
-    empty.textContent = schedule?.last_status === "error"
-      ? "Не удалось получить прогноз. Worker повторит попытку по расписанию."
-      : "Первый почасовой прогноз появится после запуска worker на сервере.";
-    cards.push(empty);
-  }
-  weatherForecast.replaceChildren(...cards);
-
-  const historicalPoints = data.history || [];
-  const svgNamespace = "http://www.w3.org/2000/svg";
-  if (historicalPoints.length) {
-    const svg = document.createElementNS(svgNamespace, "svg");
-    svg.setAttribute("viewBox", "0 0 700 130");
-    svg.setAttribute("role", "img");
-    svg.setAttribute("aria-label", "Температура и ощущаемая температура в сохранённых почасовых срезах");
-    const allValues = historicalPoints.flatMap((item) => [item.temperature_c, item.apparent_temperature_c]);
-    const minimum = Math.min(...allValues) - 1;
-    const span = Math.max(1, Math.max(...allValues) - minimum + 1);
-    const coords = (key) => historicalPoints.map((item, index) => {
-      const x = 20 + (660 * index) / Math.max(1, historicalPoints.length - 1);
-      const y = 105 - (90 * (item[key] - minimum)) / span;
-      return `${x},${y}`;
-    }).join(" ");
-    [["temperature_c", "#b6a7ff"], ["apparent_temperature_c", "#70d8bf"]].forEach(([key, color]) => {
-      const line = document.createElementNS(svgNamespace, "polyline");
-      line.setAttribute("points", coords(key));
-      line.setAttribute("fill", "none");
-      line.setAttribute("stroke", color);
-      line.setAttribute("stroke-width", "3");
-      line.setAttribute("stroke-linecap", "round");
-      line.setAttribute("stroke-linejoin", "round");
-      svg.append(line);
-    });
-    weatherHistoryChart.replaceChildren(svg);
-  } else {
-    weatherHistoryChart.replaceChildren();
-  }
-  const historyRows = historicalPoints.map((item) => {
-    const row = document.createElement("div");
-    row.className = "weather-history-row";
-    const sourceStep = item.step_minutes >= 60
-      ? `${item.step_minutes / 60} ч`
-      : `${item.step_minutes} мин`;
-    [
-      ["strong", weatherFormatTime(item.collected_at)],
-      ["span", `${Math.round(item.temperature_c)} °C`],
-      ["span", `ощущается ${Math.round(item.apparent_temperature_c)} °C`],
-      ["span", `${item.condition} · осадки ${item.precipitation_probability_pct}%`],
-      ["span", `ветер ${Math.round(item.wind_speed_kmh)} км/ч`],
-      ["span", `${item.source} · шаг ${sourceStep}`],
-    ].forEach(([tag, value]) => {
-      const node = document.createElement(tag);
-      node.textContent = value;
-      row.append(node);
-    });
-    return row;
-  });
-  if (!historyRows.length) {
-    const empty = document.createElement("p");
-    empty.className = "weather-empty";
-    empty.textContent = "История обновлений появится после первых запусков.";
-    historyRows.push(empty);
-  }
-  weatherHistory.replaceChildren(...historyRows);
-}
-
-async function refreshWeatherDashboard(force = false) {
-  if (refreshWeatherButton.disabled) return;
-  refreshWeatherButton.disabled = true;
-  const originalLabel = refreshWeatherButton.textContent;
-  if (force) refreshWeatherButton.textContent = "Обновляю…";
-  try {
-    const dashboard = force
-      ? await api("/api/weather/refresh", { method: "POST" })
-      : await api("/api/weather/dashboard");
-    renderWeatherDashboard(dashboard);
-  } catch (error) {
-    weatherUpdated.textContent = error.message;
-    weatherStatus.textContent = "Не удалось загрузить данные";
-    weatherStatus.classList.add("error");
-  } finally {
-    refreshWeatherButton.textContent = originalLabel;
-    refreshWeatherButton.disabled = false;
-  }
-}
-
-function renderWeatherChat(session) {
-  weatherSession = session;
-  const items = (session?.messages || [])
-    .filter((message) => message.kind === "message")
-    .slice(-30)
-    .map((message) => {
-      const node = document.createElement("article");
-      node.className = `weather-chat-message ${message.role}`;
-      node.textContent = message.content;
-      return node;
-    });
-  if (!items.length) {
-    const empty = document.createElement("p");
-    empty.className = "weather-chat-empty";
-    empty.textContent = "Задай вопрос о погоде, одежде или планах на ближайшие часы.";
-    items.push(empty);
-  }
-  weatherChatMessages.replaceChildren(...items);
-  weatherChatMessages.scrollTop = weatherChatMessages.scrollHeight;
-}
-
-async function ensureWeatherChatSession() {
-  const storageKey = "rubik-weather-chat-owner";
-  let sessionId = null;
-  try { sessionId = localStorage.getItem(storageKey); } catch (_) { /* Continue without persistence. */ }
-  if (sessionId) {
-    try {
-      renderWeatherChat(await api(`/api/weather/chat/sessions/${sessionId}`));
-      return weatherSession;
-    } catch (_) {
-      try { localStorage.removeItem(storageKey); } catch (_) { /* Continue without persistence. */ }
-    }
-  }
-  const session = await api("/api/weather/chat/sessions", {
-    method: "POST",
-    body: JSON.stringify({}),
-  });
-  weatherSession = session;
-  try { localStorage.setItem(storageKey, session.id); } catch (_) { /* Continue without persistence. */ }
-  renderWeatherChat(session);
-  return session;
-}
-
-async function toggleWeatherPage(forceOpen = null) {
-  const conversation = document.querySelector(".conversation");
-  const currentlyOpen = conversation.classList.contains("weather-mode");
-  const opening = forceOpen === null ? !currentlyOpen : forceOpen;
-  if (opening === currentlyOpen) return;
-  conversation.classList.toggle("weather-mode", opening);
-  openWeatherButton.setAttribute("aria-pressed", String(opening));
-  if (opening) {
-    closeNavigation();
-    await Promise.allSettled([refreshWeatherDashboard(), ensureWeatherChatSession()]);
-    if (!weatherRefreshTimer) weatherRefreshTimer = window.setInterval(refreshWeatherDashboard, 60_000);
-  } else if (weatherRefreshTimer) {
-    window.clearInterval(weatherRefreshTimer);
-    weatherRefreshTimer = null;
-  }
-}
-
-openWeatherButton.addEventListener("click", () => toggleWeatherPage());
-
-refreshWeatherButton.addEventListener("click", () => refreshWeatherDashboard(true));
-weatherChatForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const content = weatherChatInput.value.trim();
-  if (!content || weatherChatBusy) return;
-  weatherChatBusy = true;
-  weatherChatSubmit.disabled = true;
-  try {
-    const session = await ensureWeatherChatSession();
-    await api(`/api/weather/chat/sessions/${session.id}/messages`, {
-      method: "POST",
-      body: JSON.stringify({ content, city: "Москва" }),
-    });
-    weatherChatInput.value = "";
-    renderWeatherChat(await api(`/api/weather/chat/sessions/${session.id}`));
-  } catch (error) {
-    const message = document.createElement("article");
-    message.className = "weather-chat-message";
-    message.textContent = error.message;
-    weatherChatMessages.append(message);
-  } finally {
-    weatherChatBusy = false;
-    weatherChatSubmit.disabled = false;
-    weatherChatInput.focus();
-  }
-});
-
 
 renderMemory();
 renderQueue();
-initializeAuthentication();
+loadInvariants().catch(() => { renderActiveInvariants(); });
+loadProfiles();
