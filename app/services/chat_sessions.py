@@ -265,10 +265,14 @@ class ChatSessionService:
             ),
             **(
                 {"external_context_label": (
-                    f"{external_context_label} и MCP · {invocation.tool_name}"
+                    (
+                        f"{external_context_label} и MCP · {invocation.tool_name}"
+                        if external_context_label
+                        else f"MCP · {invocation.tool_name}"
+                    )
                     if invocation else external_context_label
                 )}
-                if external_context_label else {}
+                if invocation or external_context_label else {}
             ),
         )
         updated = self._repository.append_exchange(session_id, content.strip(), policy.apply(answer))
