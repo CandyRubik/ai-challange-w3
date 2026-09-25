@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 import httpx
 from mcp import Client, StdioServerParameters
 
+from app import main as main_module
 from app.agents.agent import Agent
 from app.main import app, get_mcp_service
 from app.mcp.weather_server import (
@@ -19,7 +20,7 @@ from app.mcp.weather_server import (
     create_weather_server,
 )
 from app.services.chat_sessions import ChatSessionService
-from app.services.mcp import McpInvocation, McpService, McpTool
+from app.services.mcp import McpInvocation, McpService, McpStepInvocation, McpTool
 from app.storage.chat_sessions import SQLiteChatSessionRepository
 
 
@@ -76,6 +77,105 @@ def test_weather_server_registers_typed_tool_and_returns_structured_result() -> 
     assert called.structured_content["days"][0]["precipitation_probability_max"] == 80
     assert called.structured_content["days"][0]["condition"] == "дождь"
     assert weather_api.calls == [("Москва", 1)]
+
+
+def test_weather_report_tools_pass_structured_forecast_and_save_file(tmp_path: Path) -> None:
+    server = create_weather_server(FakeWeatherApi(), report_directory=tmp_path)
+
+    async def exercise() -> tuple[object, object, object, object]:
+        async with Client(server, raise_exceptions=True) as client:
+            listed = await client.list_tools()
+            forecast = await client.call_tool(
+                "get_weather_forecast", {"city": "Москва", "forecast_days": 1},
+            )
+            summary = await client.call_tool(
+                "summarize_forecast", {"forecast": forecast.structured_content},
+            )
+            saved = await client.call_tool(
+                "save_weather_report",
+                {
+                    "content": summary.structured_content["markdown"],
+                    "filename": "weather-report-test.md",
+                },
+            )
+        return listed, forecast, summary, saved
+
+    listed, forecast, summary, saved = asyncio.run(exercise())
+    names = {tool.name for tool in listed.tools}
+
+    assert {"get_weather_forecast", "summarize_forecast", "save_weather_report"} <= names
+    assert forecast.structured_content["location"] == "Москва"
+    assert summary.structured_content["temperature_min_c"] == 8.5
+    assert summary.structured_content["precipitation_probability_max"] == 80
+    assert saved.structured_content["download_url"] == "/api/reports/weather-report-test.md"
+    assert (tmp_path / "weather-report-test.md").read_text(encoding="utf-8") == summary.structured_content["markdown"]
+
+
+def test_weather_report_pipeline_runs_tools_in_order_and_passes_results() -> None:
+    forecast = {
+        "location": "Москва",
+        "days": [{"temperature_min_c": 8.5, "temperature_max_c": 13.2}],
+    }
+    summary = {"markdown": "# Прогноз Москвы\n\nТемпература от 8.5 до 13.2 °C."}
+    saved = {"filename": "weather-report-test.md", "download_url": "/api/reports/weather-report-test.md"}
+
+    class PipelineClient:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, dict]] = []
+
+        async def list_tools(self, cursor: str | None = None) -> SimpleNamespace:
+            assert cursor is None
+            tools = [
+                SimpleNamespace(name=name, title=name, description=name, input_schema={"type": "object"})
+                for name in (
+                    "get_weather_forecast", "summarize_forecast", "save_weather_report",
+                )
+            ]
+            return SimpleNamespace(tools=tools, next_cursor=None)
+
+        async def call_tool(self, name: str, arguments: dict) -> SimpleNamespace:
+            self.calls.append((name, arguments))
+            payload = {
+                "get_weather_forecast": forecast,
+                "summarize_forecast": summary,
+                "save_weather_report": saved,
+            }[name]
+            return SimpleNamespace(
+                is_error=False,
+                structured_content=payload,
+                content=[],
+            )
+
+    client = PipelineClient()
+
+    class PipelineContext:
+        async def __aenter__(self) -> PipelineClient:
+            return client
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+    class RouterModel:
+        @staticmethod
+        def generate_json(**_request: object) -> str:
+            return '{"tool":"get_weather_forecast","arguments":{"city":"Москва","forecast_days":2}}'
+
+    service = McpService(
+        StdioServerParameters(command="python", args=["-m", "weather"]),
+        client_factory=lambda _server: PipelineContext(),
+    )
+    invocation = service.maybe_invoke("Сохрани отчет о погоде на два дня в Москве", RouterModel())
+
+    assert invocation is not None
+    assert [step.tool_name for step in invocation.steps] == [
+        "get_weather_forecast", "summarize_forecast", "save_weather_report",
+    ]
+    assert [name for name, _arguments in client.calls] == [
+        "get_weather_forecast", "summarize_forecast", "save_weather_report",
+    ]
+    assert client.calls[1][1]["forecast"] == forecast
+    assert client.calls[2][1]["content"] == summary["markdown"]
+    assert saved["download_url"] in invocation.external_context()
 
 
 def test_open_meteo_adapter_combines_geocoding_and_forecast() -> None:
@@ -238,6 +338,46 @@ def test_chat_uses_mcp_result_in_the_final_agent_answer(tmp_path: Path) -> None:
     assert "precipitation_probability_max" in system_prompt
 
 
+def test_chat_exposes_pipeline_steps_and_report_link_to_agent(tmp_path: Path) -> None:
+    class Model:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def generate(self, **request: object) -> str:
+            self.calls.append(request)
+            return "Отчет готов"
+
+    class WeatherReportMcp:
+        @staticmethod
+        def maybe_invoke(_content: str, _model: object) -> McpInvocation:
+            return McpInvocation(
+                "get_weather_forecast → summarize_forecast → save_weather_report",
+                {"city": "Москва"},
+                '{"download_url":"/api/reports/weather-report-test.md"}',
+                steps=(McpStepInvocation(
+                    "save_weather_report",
+                    {"filename": "weather-report-test.md"},
+                    '{"download_url":"/api/reports/weather-report-test.md"}',
+                ),),
+            )
+
+    model = Model()
+    service = ChatSessionService(
+        SQLiteChatSessionRepository(tmp_path / "chat.sqlite3"),
+        Agent(model),
+        mcp_service=WeatherReportMcp(),  # type: ignore[arg-type]
+        mcp_model=object(),  # type: ignore[arg-type]
+    )
+    session = service.create()
+
+    service.send(session.id, "Сохрани отчет о погоде в Москве")
+
+    system_prompt = model.calls[0]["messages"][0]["content"]
+    assert "MCP · get_weather_forecast → summarize_forecast → save_weather_report" in system_prompt
+    assert "include that exact relative URL" in system_prompt
+    assert "/api/reports/weather-report-test.md" in system_prompt
+
+
 def test_application_exposes_mcp_status_and_tool_schema() -> None:
     class HttpMcp:
         endpoint = "stdio: python -m app.mcp.weather_server"
@@ -267,16 +407,39 @@ def test_application_exposes_mcp_status_and_tool_schema() -> None:
     assert tools.json()[0]["input_schema"]["required"] == ["city"]
 
 
+def test_saved_weather_report_can_be_downloaded(tmp_path: Path, monkeypatch) -> None:
+    report = tmp_path / "weather-report-test.md"
+    report.write_text("# Прогноз\n", encoding="utf-8")
+    monkeypatch.setattr(main_module, "REPORTS_DIRECTORY", tmp_path)
+
+    with TestClient(app) as client:
+        response = client.get("/api/reports/weather-report-test.md")
+        preview = client.get("/api/reports/weather-report-test.md?preview=true")
+        traversal = client.get("/api/reports/..%2Fsecrets.md")
+
+    assert response.status_code == 200
+    assert response.text == "# Прогноз\n"
+    assert response.headers["content-disposition"].endswith('filename="weather-report-test.md"')
+    assert preview.status_code == 200
+    assert preview.text == "# Прогноз\n"
+    assert "content-disposition" not in preview.headers
+    assert traversal.status_code == 404
+
+
 def test_real_stdio_server_exposes_weather_tool() -> None:
     tools = McpService().list_tools()
 
-    assert [tool.name for tool in tools] == [
+    names = {tool.name for tool in tools}
+    assert names == {
         "get_weather_forecast",
+        "summarize_forecast",
+        "save_weather_report",
         "create_weather_schedule",
         "list_weather_schedules",
         "get_weather_summary",
         "cancel_weather_schedule",
-    ]
-    assert tools[0].input_schema["required"] == ["city"]
-    assert tools[0].output_schema is not None
-    assert "days" in tools[0].output_schema["properties"]
+    }
+    forecast_tool = next(tool for tool in tools if tool.name == "get_weather_forecast")
+    assert forecast_tool.input_schema["required"] == ["city"]
+    assert forecast_tool.output_schema is not None
+    assert "days" in forecast_tool.output_schema["properties"]

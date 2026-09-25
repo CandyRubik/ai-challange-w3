@@ -201,10 +201,12 @@ def test_chat_passes_complete_multi_server_trace_to_agent(tmp_path: Path) -> Non
         def run_flow(_content: str, _model: object) -> McpFlow:
             return McpFlow((
                 McpInvocation(
-                    "get_weather_forecast", {"city": "Москва"}, '{"condition":"дождь"}', "weather",
+                    "get_weather_forecast", {"city": "Москва"}, '{"condition":"дождь"}',
+                    server_name="weather",
                 ),
                 McpInvocation(
-                    "list_checklist_items", {"checklist_id": "checklist-1"}, '{"items":["Зонт"]}', "checklist",
+                    "list_checklist_items", {"checklist_id": "checklist-1"}, '{"items":["Зонт"]}',
+                    server_name="checklist",
                 ),
             ))
 

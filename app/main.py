@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 import hmac
 import os
+import re
 import sqlite3
 from threading import Lock
 from pathlib import Path
@@ -12,7 +13,7 @@ from typing import Literal
 from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from .auth import (
@@ -63,7 +64,7 @@ from .services.chat_sessions import (
 from .services.mcp import McpError, McpService
 from .scheduler.storage import SQLiteWeatherScheduleRepository
 from .scheduler.chat_storage import SQLiteWeatherChatRepository, WeatherChatSessionNotFound
-from .mcp.weather_server import OpenMeteoWeatherApi
+from .mcp.weather_server import OpenMeteoWeatherApi, REPORTS_DIRECTORY
 from .storage.chat_sessions import (
     ChatSessionNotFound,
     DEFAULT_CHAT_DB_PATH,
@@ -480,6 +481,27 @@ def list_mcp_tools(
         ]
     except McpError as error:
         raise HTTPException(status_code=502, detail=str(error)) from None
+
+
+@app.get("/api/reports/{filename}")
+def download_report(filename: str, preview: bool = False) -> Response:
+    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}\.md", filename):
+        raise HTTPException(status_code=404, detail="Отчет не найден")
+    reports_directory = REPORTS_DIRECTORY.resolve()
+    report_path = (reports_directory / filename).resolve()
+    if report_path.parent != reports_directory or not report_path.is_file():
+        raise HTTPException(status_code=404, detail="Отчет не найден")
+    if preview:
+        try:
+            content = report_path.read_text(encoding="utf-8")
+        except OSError:
+            raise HTTPException(status_code=404, detail="Отчет не найден") from None
+        return PlainTextResponse(content, media_type="text/markdown; charset=utf-8")
+    return FileResponse(
+        report_path,
+        media_type="text/markdown; charset=utf-8",
+        filename=filename,
+    )
 
 
 @app.post("/api/chat/sessions", response_model=ChatSession, status_code=201)
