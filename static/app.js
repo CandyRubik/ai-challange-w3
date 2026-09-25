@@ -1016,11 +1016,11 @@ function renderMessages(items, updateState = true) {
     const kind = message.kind || "message";
     article.className = `message ${message.role} ${kind}`;
     const isMcp = message.role === "assistant"
-      && message.content.toLocaleUpperCase().startsWith("ИСТОЧНИК: MCP · ");
+      && /^Источник:\s*[^\r\n]*MCP\s·\s*/iu.test(message.content);
     if (isMcp) article.classList.add("mcp-result");
     if (message.refusal && message.role === "assistant") article.classList.add("invariant-refusal");
     const sourceMatch = isMcp
-      ? message.content.match(/^Источник:\s*(MCP\s·[^\r\n]+)/u)
+      ? message.content.match(/^Источник:\s*([^\r\n]+)/u)
       : null;
     const reportMatch = isMcp
       ? message.content.match(/\/api\/reports\/([A-Za-z0-9_-]+\.md)/)
