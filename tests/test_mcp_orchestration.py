@@ -222,6 +222,14 @@ def test_chat_passes_complete_multi_server_trace_to_agent(tmp_path: Path) -> Non
     response = service.send(session.id, "Собери список для прогулки")
 
     assert response.assistant_message.content.startswith("Источник: MCP · multi-server flow")
+    assert [
+        f"{step.server}.{step.tool}"
+        for step in response.assistant_message.mcp_trace
+    ] == ["weather.get_weather_forecast", "checklist.list_checklist_items"]
     system_prompt = model.messages[0]["content"]
     assert "Step 1 · Server: weather" in system_prompt
     assert "Step 2 · Server: checklist" in system_prompt
+    stored = service.get(session.id).messages[-1]
+    assert [step.result for step in stored.mcp_trace] == [
+        '{"condition":"дождь"}', '{"items":["Зонт"]}',
+    ]

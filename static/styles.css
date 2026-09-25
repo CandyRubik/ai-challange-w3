@@ -541,3 +541,127 @@ dialog { border-color: #30323b; background: #131419; box-shadow: 0 28px 90px #00
   .context-panel { top: 8px; right: 8px; bottom: 8px; width: calc(100vw - 16px); }
 }
 @media (prefers-reduced-motion: reduce) { .context-panel, .sidebar { transition: none; } }
+
+/* MCP responses keep the source badge on one line and hide the verbose trace
+   behind an opt-in details panel. */
+.message.assistant.mcp-result > span {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  margin: 0 0 7px 4px;
+  border: 1px solid #2d3038;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #8d92a0;
+  background: #17181e;
+  font-size: 10px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp-trace {
+  width: min(100%, 680px);
+  margin: 3px 0 8px 4px;
+  border: 1px solid #2b2e37;
+  border-radius: 12px;
+  background: #14151a;
+}
+.mcp-trace > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 8px 11px;
+  color: #a9adba;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+  list-style: none;
+}
+.mcp-trace > summary::-webkit-details-marker { display: none; }
+.mcp-trace > summary::before {
+  content: "›";
+  color: #8f83d8;
+  font-size: 17px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 160ms ease;
+}
+.mcp-trace[open] > summary { border-bottom: 1px solid #2b2e37; }
+.mcp-trace[open] > summary::before { transform: rotate(90deg); }
+.mcp-trace > summary:hover { color: #e7e8ed; background: #1a1b22; }
+.mcp-trace-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 10px;
+  list-style: none;
+}
+.mcp-trace-step {
+  min-width: 0;
+  border: 1px solid #2c303a;
+  border-radius: 9px;
+  padding: 9px;
+  background: #18191f;
+}
+.mcp-trace-step-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: #d8dae2;
+  font-size: 11px;
+}
+.mcp-trace-step-number {
+  display: grid !important;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+  margin: 0 !important;
+  border-radius: 50%;
+  color: #cfc7ff !important;
+  background: #332b5c;
+  font: 10px ui-monospace, SFMono-Regular, Menlo, monospace !important;
+}
+.mcp-trace-server {
+  display: inline !important;
+  margin: 0 !important;
+  color: #9d98bd !important;
+  font-size: 10px !important;
+}
+.mcp-trace-tool {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #e4e5eb;
+  font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.mcp-trace-label {
+  display: block !important;
+  margin: 8px 0 3px !important;
+  color: #777d8d !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.mcp-trace pre {
+  max-height: 140px;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid #292c34;
+  border-radius: 7px;
+  padding: 7px 8px;
+  color: #b9becb;
+  background: #101116;
+  font: 10px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+@media (max-width: 820px) {
+  .message.assistant.mcp-result > span { max-width: calc(100vw - 48px); }
+  .mcp-trace { width: 100%; margin-left: 0; }
+}

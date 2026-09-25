@@ -4,13 +4,14 @@ from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import sqlite3
 from threading import Lock
 from typing import Protocol
 from uuid import uuid4
 
-from ..memory.messages import StoredMessage
+from ..memory.messages import StoredMessage, StoredMcpTraceStep
 from ..state.task import StoredTask, TaskContext, TaskConflict, TaskState
 from ..orchestration.profiles import (
     DEFAULT_PROFILE_ID,
@@ -51,6 +52,8 @@ class ChatSessionRepository(Protocol):
         session_id: str,
         user_content: str,
         assistant_content: str,
+        *,
+        mcp_trace: tuple[StoredMcpTraceStep, ...] = (),
     ) -> StoredSession: ...
 
     def append_command(self, session_id: str, command_text: str) -> StoredSession: ...
@@ -125,6 +128,7 @@ class SQLiteChatSessionRepository:
                     kind TEXT NOT NULL DEFAULT 'message'
                         CHECK (kind IN ('message', 'command')),
                     content TEXT NOT NULL,
+                    mcp_trace TEXT,
                     is_refusal INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     UNIQUE (session_id, position)
@@ -179,6 +183,10 @@ class SQLiteChatSessionRepository:
                 connection.execute(
                     "ALTER TABLE chat_messages ADD COLUMN is_refusal INTEGER NOT NULL DEFAULT 0",
                 )
+            if "mcp_trace" not in message_columns:
+                connection.execute(
+                    "ALTER TABLE chat_messages ADD COLUMN mcp_trace TEXT",
+                )
 
     @staticmethod
     def _timestamp(value: datetime) -> str:
@@ -206,24 +214,14 @@ class SQLiteChatSessionRepository:
 
         message_rows = connection.execute(
             """
-            SELECT id, role, kind, content, created_at, is_refusal
+            SELECT id, role, kind, content, created_at, is_refusal, mcp_trace
             FROM chat_messages
             WHERE session_id = ?
             ORDER BY position
             """,
             (session_id,),
         ).fetchall()
-        messages = tuple(
-            StoredMessage(
-                id=message["id"],
-                role=message["role"],
-                kind=message["kind"],
-                content=message["content"],
-                created_at=self._datetime(message["created_at"]),
-                refusal=bool(message["is_refusal"]),
-            )
-            for message in message_rows
-        )
+        messages = tuple(self._stored_message(message) for message in message_rows)
         task_row = connection.execute(
             "SELECT context, revision, progress_revision FROM chat_tasks WHERE session_id = ?",
             (session_id,),
@@ -241,6 +239,45 @@ class SQLiteChatSessionRepository:
             updated_at=self._datetime(row["updated_at"]),
             messages=messages,
             task=task,
+        )
+
+    @staticmethod
+    def _decode_mcp_trace(value: str | None) -> tuple[StoredMcpTraceStep, ...]:
+        if not value:
+            return ()
+        try:
+            payload = json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            return ()
+        if not isinstance(payload, list):
+            return ()
+        steps: list[StoredMcpTraceStep] = []
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            try:
+                step = int(item["step"])
+                server = str(item["server"])
+                tool = str(item["tool"])
+                arguments = item["arguments"]
+                result = str(item["result"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if step < 1 or not server or not tool or not isinstance(arguments, dict):
+                continue
+            steps.append(StoredMcpTraceStep(step, server, tool, arguments, result))
+        return tuple(steps)
+
+    @classmethod
+    def _stored_message(cls, message: sqlite3.Row) -> StoredMessage:
+        return StoredMessage(
+            id=message["id"],
+            role=message["role"],
+            kind=message["kind"],
+            content=message["content"],
+            created_at=cls._datetime(message["created_at"]),
+            refusal=bool(message["is_refusal"]),
+            mcp_trace=cls._decode_mcp_trace(message["mcp_trace"]),
         )
 
     def create(self, profile_id: str = DEFAULT_PROFILE_ID) -> StoredSession:
@@ -306,11 +343,19 @@ class SQLiteChatSessionRepository:
         session_id: str,
         user_content: str,
         assistant_content: str,
+        *,
+        mcp_trace: tuple[StoredMcpTraceStep, ...] = (),
     ) -> StoredSession:
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             session = self._load_session(connection, session_id)
-            self._append_exchange(connection, session, user_content, assistant_content)
+            self._append_exchange(
+                connection,
+                session,
+                user_content,
+                assistant_content,
+                mcp_trace=mcp_trace,
+            )
 
         return self.get(session_id)
 
@@ -357,21 +402,39 @@ class SQLiteChatSessionRepository:
         self, connection: sqlite3.Connection, session: StoredSession,
         user_content: str, assistant_content: str,
         *, refusal: bool = False,
+        mcp_trace: tuple[StoredMcpTraceStep, ...] = (),
     ) -> None:
         timestamp = self._timestamp(datetime.now(timezone.utc))
         position = len(session.messages)
         title = session.title
         if not session.messages:
             title = user_content.replace("\n", " ").strip()[:60] or "Новый чат"
+        trace_json = (
+            json.dumps(
+                [
+                    {
+                        "step": item.step,
+                        "server": item.server,
+                        "tool": item.tool,
+                        "arguments": item.arguments,
+                        "result": item.result,
+                    }
+                    for item in mcp_trace
+                ],
+                ensure_ascii=False,
+            )
+            if mcp_trace
+            else None
+        )
         connection.executemany(
             """
             INSERT INTO chat_messages
-                (id, session_id, position, role, content, created_at, is_refusal)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (id, session_id, position, role, content, mcp_trace, created_at, is_refusal)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                (str(uuid4()), session.id, position, "user", user_content, timestamp, int(refusal)),
-                (str(uuid4()), session.id, position + 1, "assistant", assistant_content, timestamp, int(refusal)),
+                (str(uuid4()), session.id, position, "user", user_content, None, timestamp, int(refusal)),
+                (str(uuid4()), session.id, position + 1, "assistant", assistant_content, trace_json, timestamp, int(refusal)),
             ],
         )
         connection.execute(
