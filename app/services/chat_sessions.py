@@ -10,16 +10,17 @@ from ..orchestration.onboarding import ProfileOnboarding
 from ..orchestration.profiles import DEFAULT_PROFILE_ID, ProfileRepository, StoredProfile
 from ..orchestration.tasks import TaskOrchestrator
 from ..schemas import (
-    ChatMessage, ChatSendResponse, ChatSession, ChatSessionSummary,
+    ChatMessage, ChatSendResponse, ChatSession, ChatSessionSummary, McpTraceStep,
     TaskActionRequest, TaskSummary, TaskView,
 )
 from ..state.task import TaskContext, TaskConflict, TaskState, approve_plan, pause, replan, require_action, resume
 from ..memory.service import MemoryRepository
-from .mcp import McpError, McpFlow, McpService, McpToolSelectionModel
+from .mcp import McpError, McpFlow, McpInvocation, McpService, McpToolSelectionModel
 from ..storage.chat_sessions import (
     ChatSessionNotFound, ChatSessionRepository, DEFAULT_CHAT_DB_PATH,
     DEFAULT_DB_PATH, SQLiteChatSessionRepository, StoredMessage, StoredSession, StoredTask,
 )
+from ..memory.messages import StoredMcpTraceStep
 
 
 class ChatSessionService:
@@ -86,7 +87,53 @@ class ChatSessionService:
             refusal=message.refusal,
             content=message.content,
             created_at=message.created_at,
+            mcp_trace=tuple(
+                McpTraceStep(
+                    step=item.step,
+                    server=item.server,
+                    tool=item.tool,
+                    arguments=item.arguments,
+                    result=item.result,
+                )
+                for item in message.mcp_trace
+            ),
         )
+
+    @staticmethod
+    def _mcp_trace(
+        flow: McpFlow | None,
+        invocation: McpInvocation | None,
+    ) -> tuple[StoredMcpTraceStep, ...]:
+        """Convert the in-memory MCP flow into a compact persisted trace."""
+        invocations = () if flow is None else flow.invocations
+        if not invocations and invocation is not None:
+            invocations = (invocation,)
+
+        trace: list[StoredMcpTraceStep] = []
+        for invocation_item in invocations:
+            nested_steps = getattr(invocation_item, "steps", ())
+            if nested_steps:
+                for nested in nested_steps:
+                    trace.append(
+                        StoredMcpTraceStep(
+                            step=len(trace) + 1,
+                            server=invocation_item.server_name,
+                            tool=nested.tool_name,
+                            arguments=dict(nested.arguments),
+                            result=nested.result,
+                        ),
+                    )
+                continue
+            trace.append(
+                StoredMcpTraceStep(
+                    step=len(trace) + 1,
+                    server=invocation_item.server_name,
+                    tool=invocation_item.tool_name,
+                    arguments=dict(invocation_item.arguments),
+                    result=invocation_item.result,
+                ),
+            )
+        return tuple(trace)
 
     @classmethod
     def _response(cls, updated: StoredSession) -> ChatSendResponse:
@@ -274,6 +321,7 @@ class ChatSessionService:
                 if external_context_label
                 else f"MCP · {invocation.tool_name}"
             )
+        mcp_trace = self._mcp_trace(flow, invocation)
         answer = self._agent.respond(
             context,
             content,
@@ -297,7 +345,12 @@ class ChatSessionService:
             ),
             **({"external_context_label": mcp_label} if mcp_label else {}),
         )
-        updated = self._repository.append_exchange(session_id, content.strip(), policy.apply(answer))
+        updated = self._repository.append_exchange(
+            session_id,
+            content.strip(),
+            policy.apply(answer),
+            mcp_trace=mcp_trace,
+        )
         self._memory.remember(
             session_id=session_id,
             profile_id=session.profile_id,

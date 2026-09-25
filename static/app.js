@@ -945,6 +945,63 @@ async function showReportPreview(reportUrl, filename) {
   dialog.showModal();
 }
 
+function formatMcpTraceValue(value) {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch (_) {
+    return String(value);
+  }
+}
+
+function createMcpTraceElement(trace) {
+  if (!Array.isArray(trace) || !trace.length) return null;
+
+  const details = document.createElement("details");
+  details.className = "mcp-trace";
+
+  const summary = document.createElement("summary");
+  summary.textContent = `Трасса MCP · ${trace.length} шагов`;
+  details.append(summary);
+
+  const list = document.createElement("ol");
+  list.className = "mcp-trace-list";
+  trace.forEach((step, index) => {
+    const item = document.createElement("li");
+    item.className = "mcp-trace-step";
+
+    const heading = document.createElement("div");
+    heading.className = "mcp-trace-step-heading";
+    const number = document.createElement("span");
+    number.className = "mcp-trace-step-number";
+    number.textContent = String(Number.isInteger(step.step) ? step.step : index + 1);
+    const server = document.createElement("span");
+    server.className = "mcp-trace-server";
+    server.textContent = step.server || "MCP";
+    const tool = document.createElement("strong");
+    tool.className = "mcp-trace-tool";
+    tool.textContent = step.tool || "Неизвестный инструмент";
+    heading.append(number, server, tool);
+
+    const argumentsLabel = document.createElement("span");
+    argumentsLabel.className = "mcp-trace-label";
+    argumentsLabel.textContent = "Аргументы";
+    const argumentsValue = document.createElement("pre");
+    argumentsValue.textContent = formatMcpTraceValue(step.arguments || {});
+
+    const resultLabel = document.createElement("span");
+    resultLabel.className = "mcp-trace-label";
+    resultLabel.textContent = "Результат";
+    const resultValue = document.createElement("pre");
+    resultValue.textContent = formatMcpTraceValue(step.result || "");
+
+    item.append(heading, argumentsLabel, argumentsValue, resultLabel, resultValue);
+    list.append(item);
+  });
+  details.append(list);
+  return details;
+}
+
 function renderMessages(items, updateState = true) {
   if (updateState) {
     currentMessages = items;
@@ -959,11 +1016,11 @@ function renderMessages(items, updateState = true) {
     const kind = message.kind || "message";
     article.className = `message ${message.role} ${kind}`;
     const isMcp = message.role === "assistant"
-      && message.content.toLocaleUpperCase().startsWith("ИСТОЧНИК: MCP · ");
+      && /^Источник:\s*[^\r\n]*MCP\s·\s*/iu.test(message.content);
     if (isMcp) article.classList.add("mcp-result");
     if (message.refusal && message.role === "assistant") article.classList.add("invariant-refusal");
     const sourceMatch = isMcp
-      ? message.content.match(/^Источник:\s*MCP\s·\s*[A-Za-z0-9_]+(?:\s*→\s*[A-Za-z0-9_]+)*/u)
+      ? message.content.match(/^Источник:\s*([^\r\n]+)/u)
       : null;
     const reportMatch = isMcp
       ? message.content.match(/\/api\/reports\/([A-Za-z0-9_-]+\.md)/)
@@ -973,7 +1030,7 @@ function renderMessages(items, updateState = true) {
       ? (reportMatch
         ? "MCP · отчет из трех шагов"
         : (sourceMatch
-          ? sourceMatch[0].replace(/^Источник:\s*/i, "")
+          ? sourceMatch[1].trim()
           : message.content.split("\n", 1)[0].replace(/^источник:\s*/i, "")))
       : (kind === "command"
         ? "Команда памяти"
@@ -1005,6 +1062,8 @@ function renderMessages(items, updateState = true) {
       content.textContent = displayContent;
     }
     article.append(label, content);
+    const mcpTrace = createMcpTraceElement(message.mcp_trace);
+    if (mcpTrace) article.append(mcpTrace);
     if (reportMatch) {
       const filename = reportMatch[1];
       const card = document.createElement("section");

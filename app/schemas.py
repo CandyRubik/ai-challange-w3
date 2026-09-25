@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Any, Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -36,6 +36,14 @@ class ChatSessionCreateRequest(StrictModel):
     profile_id: str = "default"
 
 
+class McpTraceStep(StrictModel):
+    step: Annotated[int, Field(ge=1)]
+    server: Annotated[str, Field(min_length=1, max_length=80)]
+    tool: Annotated[str, Field(min_length=1, max_length=160)]
+    arguments: dict[str, Any]
+    result: Annotated[str, Field(max_length=20_000)]
+
+
 class ChatMessage(StrictModel):
     id: str
     role: Literal["user", "assistant"]
@@ -43,6 +51,7 @@ class ChatMessage(StrictModel):
     refusal: bool = False
     content: str
     created_at: datetime
+    mcp_trace: tuple[McpTraceStep, ...] = ()
 
 
 class WeatherChatSessionView(StrictModel):
