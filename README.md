@@ -7,7 +7,8 @@ Standalone-чат с агентом, профилями пользователе
 Агент изолирован от кода на уровне архитектуры: ему передаются системная
 инструкция, контекст оркестрации, память и снимок состояния задачи. У провайдера нет native
 tools/function calling, доступа к файлам, репозиторию, shell или окружению процесса.
-Для прогноза погоды host-приложение даёт агенту один ограниченный MCP-инструмент.
+Host-приложение регистрирует Weather MCP и Checklist MCP, а агент выбирает и вызывает
+их инструменты через ограниченный последовательный роутер.
 
 ## Что внутри
 
@@ -26,6 +27,8 @@ tools/function calling, доступа к файлам, репозиторию, 
 - input/output policy для ограничения пользовательского ввода и ответа;
 - изолированный DeepSeek provider;
 - собственный Weather MCP-сервер вокруг Open-Meteo;
+- собственный Checklist MCP-сервер с сохраняемым состоянием;
+- multi-server MCP orchestration с валидацией схем и лимитом шагов;
 - отдельный почасовой погодный worker с SQLite-историей прогнозов и дашбордом;
 - профиль-независимый погодный чат с отдельной историей;
 - тесты backend, provider и frontend syntax check в CI.
@@ -119,7 +122,8 @@ HTTP API → ChatSessionService → ProfileOnboarding / TaskOrchestrator
                     │       OrchestrationContext + MemoryContext + TaskContext
                     │                       ↓
                     │               Agent → PromptBuilder → DeepSeek API
-                    ├──→ MCP router → stdio → Weather MCP → Open-Meteo API
+                    ├──→ MCP orchestration → stdio → Weather MCP → Open-Meteo API
+                    │                     └→ stdio → Checklist MCP → SQLite
                     ├──→ MemoryRuntime → MemoryExtractor → MemoryRepository
                     └──→ ChatSessionRepository → SQLite
 ```
@@ -135,8 +139,8 @@ HTTP API → ChatSessionService → ProfileOnboarding / TaskOrchestrator
   состояния задачи, блокировки и проверка версий;
 - `app/services/chat_sessions.py` — координация этих частей и адаптация к HTTP-моделям;
 - `app/agents/` — вызов модели, политики ввода/вывода и схемы результатов этапов.
-- `app/mcp/` — собственный MCP-сервер и типизированный weather-инструмент;
-- `app/services/mcp.py` — stdio-клиент, discovery, валидация и вызов инструмента.
+- `app/mcp/` — Weather и Checklist MCP-серверы с типизированными инструментами;
+- `app/services/mcp.py` — реестр stdio-серверов, discovery, валидация и multi-step flow.
 
 Профиль передаётся через `OrchestrationContext.profile`. Записи памяти
 передаются отдельно через `MemoryContext`; история диалога остаётся отдельной
@@ -174,6 +178,16 @@ curl http://127.0.0.1:8000/api/mcp/tools
 
 Подробности реализации, команды проверки и сценарий видео:
 [День 17](docs/day17-mcp.md).
+
+## Multi-server MCP orchestration
+
+Приложение по умолчанию регистрирует два локальных stdio-сервера. Каталог доступных
+инструментов возвращается через `GET /api/mcp/tools` и содержит сервер каждого
+инструмента. Для одного сообщения роутер делает не больше восьми вызовов, передаёт
+результат каждого вызова следующему решению и проверяет аргументы по MCP JSON Schema.
+
+Подробный сценарий с проверкой порядка вызовов и видео-раскадровкой находится в
+[Дне 20](docs/day20-orchestration-mcp.md).
 
 ## Почасовой погодный дашборд
 

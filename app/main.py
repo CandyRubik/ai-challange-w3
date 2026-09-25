@@ -274,7 +274,7 @@ def get_weather_agent() -> Agent:
 
 @lru_cache(maxsize=1)
 def get_mcp_service() -> McpService:
-    return McpService()
+    return McpService(servers=McpService.default_servers())
 
 
 @lru_cache(maxsize=1)
@@ -470,6 +470,7 @@ def list_mcp_tools(
         return [
             McpToolView(
                 name=tool.name,
+                server=tool.server_name,
                 title=tool.title,
                 description=tool.description,
                 input_schema=tool.input_schema,

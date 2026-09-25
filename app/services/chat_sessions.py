@@ -15,7 +15,7 @@ from ..schemas import (
 )
 from ..state.task import TaskContext, TaskConflict, TaskState, approve_plan, pause, replan, require_action, resume
 from ..memory.service import MemoryRepository
-from .mcp import McpError, McpService, McpToolSelectionModel
+from .mcp import McpError, McpFlow, McpService, McpToolSelectionModel
 from ..storage.chat_sessions import (
     ChatSessionNotFound, ChatSessionRepository, DEFAULT_CHAT_DB_PATH,
     DEFAULT_DB_PATH, SQLiteChatSessionRepository, StoredMessage, StoredSession, StoredTask,
@@ -241,15 +241,39 @@ class ChatSessionService:
             session.profile_id,
         )
         invocation = None
+        flow: McpFlow | None = None
         if self._mcp is not None and self._mcp_model is not None:
             try:
-                invocation = self._mcp.maybe_invoke(content, self._mcp_model)
+                run_flow = getattr(self._mcp, "run_flow", None)
+                if callable(run_flow):
+                    flow = run_flow(content, self._mcp_model)
+                else:
+                    # Keep compatibility with small test adapters and older hosts.
+                    invocation = self._mcp.maybe_invoke(content, self._mcp_model)
             except McpError as error:
                 answer = f"MCP · Ошибка: {error}"
                 updated = self._repository.append_exchange(
                     session_id, content.strip(), policy.apply(answer),
                 )
                 return self._response(updated)
+        mcp_label = external_context_label
+        if flow is not None and flow.last is not None:
+            suffix = (
+                "multi-server flow"
+                if len(flow.invocations) > 1
+                else flow.last.tool_name
+            )
+            mcp_label = (
+                f"{external_context_label} и MCP · {suffix}"
+                if external_context_label
+                else f"MCP · {suffix}"
+            )
+        elif invocation is not None:
+            mcp_label = (
+                f"{external_context_label} и MCP · {invocation.tool_name}"
+                if external_context_label
+                else f"MCP · {invocation.tool_name}"
+            )
         answer = self._agent.respond(
             context,
             content,
@@ -259,17 +283,19 @@ class ChatSessionService:
                 "\n\n".join(
                     item for item in (
                         external_context,
-                        None if invocation is None else invocation.external_context(),
+                        (
+                            flow.external_context()
+                            if flow is not None
+                            else (
+                                None
+                                if invocation is None
+                                else invocation.external_context()
+                            )
+                        ),
                     ) if item
                 ) or None
             ),
-            **(
-                {"external_context_label": (
-                    f"{external_context_label} и MCP · {invocation.tool_name}"
-                    if invocation else external_context_label
-                )}
-                if external_context_label else {}
-            ),
+            **({"external_context_label": mcp_label} if mcp_label else {}),
         )
         updated = self._repository.append_exchange(session_id, content.strip(), policy.apply(answer))
         self._memory.remember(

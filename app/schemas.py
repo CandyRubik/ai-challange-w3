@@ -122,6 +122,7 @@ class ChatSendResponse(StrictModel):
 
 class McpToolView(StrictModel):
     name: str
+    server: str = "weather"
     title: str
     description: str
     input_schema: dict
